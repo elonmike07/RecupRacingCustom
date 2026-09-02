@@ -17,7 +17,6 @@ void setup_custom_board_overrides() {
     // ==========================================
     // 1. COMMUNICATION SÉRIE & USB
     // ==========================================
-    engineConfiguration->tunerStudioBaudRate = 115200;
     // Note : Les broches USB VBUS et les lignes de port série de script sont gérées 
     // nativement ou via les profils matériels STM32F4 de base.
 
