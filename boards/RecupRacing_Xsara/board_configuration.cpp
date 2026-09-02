@@ -43,21 +43,21 @@ void setup_custom_board_overrides() {
     // ==========================================
     // 4. BUS SPI & EXPANDEUR (MCP23S17)
     // ==========================================
-    engineConfiguration->spi1sckPin = Gpio::A5;           // MCP-SCK (minuscule sur sck)
-    engineConfiguration->spi1misoPin = Gpio::A6;          // MCP-MISO (minuscule sur miso)
-    engineConfiguration->spi1mosiPin = Gpio::A7;          // MCP-MOSI (minuscule sur mosi)
-    engineConfiguration->mcpCsPin = Gpio::E3;             // IO_CS
+    engineConfiguration->spi1sckPin = Gpio::A5;           // MCP-SCK
+    engineConfiguration->spi1misoPin = Gpio::A6;          // MCP-MISO
+    engineConfiguration->spi1mosiPin = Gpio::A7;          // MCP-MOSI
+    engineConfiguration->mcpCsPin = Gpio::PE3;            // IO_CS
 
     // ==========================================
     // 5. GESTION DE L'ALIMENTATION & DÉMARRAGE
     // ==========================================
-    engineConfiguration->ignitionKeyPin = Gpio::B12;      // IGN_KEY_SENSE (Détection +12V Contact)
+    engineConfiguration->ignitionKeyPin = Gpio::B12;      // IGN_KEY_SENSE
     engineConfiguration->mainRelayPin = Gpio::E0;         // MAIN_RLY_IN-ESP
     engineConfiguration->fuelPumpPin = Gpio::D2;          // FUELPUMP_IN-ESP
-    engineConfiguration->tachoPin = Gpio::PA8;            // TACHO-ESP -> Gpio::A8
+    engineConfiguration->tachoPin = Gpio::A8;             // TACHO-ESP
 
     // ==========================================
-    // 6. INJECTION, ALLUMAGE & ACTIVATION LOGIQUE
+    // 6. INJECTION & ALLUMAGE
     // ==========================================
     engineConfiguration->injectionPins[0] = Gpio::B8;     // INJ-1_4_IN-ESP
     engineConfiguration->injectionPins[1] = Gpio::B9;     // INJ-2_3_IN-ESP
@@ -73,24 +73,18 @@ void setup_custom_board_overrides() {
     // 8. CONTRÔLE RALENTI (MOTEUR PAS-À-PAS / DRV8825)
     // ==========================================
     engineConfiguration->stepperEnablePin = Gpio::D13;    // NENBL-ESP
-    engineConfiguration->stepperDirPin = Gpio::D14;       // DIR-ESP
-    engineConfiguration->stepperStepPin = Gpio::D12;      // STEP-ESP
+    engineConfiguration->idle.stepperDirectionPin = Gpio::D14; // DIR-ESP (Chemin correct struct idle)
+    engineConfiguration->idle.stepperStepPin = Gpio::D12;      // STEP-ESP (Chemin correct struct idle)
 
     // ==========================================
-    // 9. GESTION ANNEXE (CLIMATISATION, CANISTER, WBO)
+    // 9. GESTION ANNEXE (CLIMATISATION, WBO)
     // ==========================================
-    // Climatisation et Purge
-    engineConfiguration->acSwitchPin = Gpio::A4;          // AC_SW
+    engineConfiguration->acSwitch = Gpio::A4;             // AC_SW (Nom corrigé sans 'Pin')
     engineConfiguration->acRelayPin = Gpio::E1;           // AC_RELAY_IN-ESP
-    engineConfiguration->canisterPin = Gpio::E2;          // CANISTER_IN-ESP
+    // engineConfiguration->canisterPin = Gpio::E2;       // Canister (géré via sortie programmable si besoin)
 
-    // Sonde Large Bande (Chauffage actif, broches pompe gardées prêtes en commentaires de sécurité)
-    engineConfiguration->wboHeaterPin = Gpio::B14;        // WBO_HEAT_ESP
-    // engineConfiguration->wboPumpPin = Gpio::C8;        // WBO_PUMP_PWM-STM
-    // engineConfiguration->wboNernstPin = Gpio::C9;      // WBO_NERNST_AC-STM
-
-    // ==========================================
-    // 10. AUTRES CONFIGURATIONS
-    // ==========================================
-    engineConfiguration->communicationLedPin = Gpio::Unassigned;
+    // Sonde Large Bande (Chauffage)
+    engineConfiguration->o2heaterPin = Gpio::B14;         // WBO_HEAT_ESP (Nom corrigé en o2heaterPin)
+    // engineConfiguration->wboPumpPin = Gpio::PC8;        // WBO_PUMP_PWM-STM (Optionnel / Avancé)
+    // engineConfiguration->wboNernstPin = Gpio::PC9;      // WBO_NERNST_AC-STM (Optionnel / Avancé)
 }
