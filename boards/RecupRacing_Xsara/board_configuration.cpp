@@ -17,44 +17,46 @@ void setup_custom_board_overrides() {
     // ==========================================
     // 1. COMMUNICATION SÉRIE & USB
     // ==========================================
-    engineConfiguration->scriptSerialRxPin = Gpio::C10;   // STM_RX3
-    engineConfiguration->scriptSerialTxPin = Gpio::C11;   // STM_TX3
     engineConfiguration->tunerStudioBaudRate = 115200;
-    engineConfiguration->usbVbusPin = Gpio::A9;           // USB_VBUS_SENSE
+    // Note : Les broches USB VBUS et les lignes de port série de script sont gérées 
+    // nativement ou via les profils matériels STM32F4 de base.
 
     // ==========================================
     // 2. CAPTEURS ANALOGIQUES (ADC)
     // ==========================================
-    engineConfiguration->map.sensorPin = Gpio::C0;        // MAP-EXT
-    engineConfiguration->knockPin = Gpio::C1;             // Knock Sensor
-    engineConfiguration->tpsPin = Gpio::C2;               // TPS Sensor
-    engineConfiguration->cltPin = Gpio::B1;               // CLT_SENSOR
-    engineConfiguration->iatPin = Gpio::C5;               // IAT-SENSOR
-    engineConfiguration->vbattPin = Gpio::C4;             // Reference-Battery-V
+    engineConfiguration->map.sensor.hwChannel = EFI_ADC_0; // MAP-EXT (Canal ADC 0 / PC0)
+    engineConfiguration->tps1_1AdcChannel = EFI_ADC_2;    // TPS Sensor (PC2 -> ADC2)
+    engineConfiguration->clt.adcChannel = EFI_ADC_9;      // CLT_SENSOR (PB1 -> ADC9)
+    engineConfiguration->iat.adcChannel = EFI_ADC_15;     // IAT-SENSOR (PC5 -> ADC15)
+    engineConfiguration->vbattAdcChannel = EFI_ADC_14;    // Reference-Battery-V (PC4 -> ADC14)
+    
+    // Pour le capteur de cliquetis (Knock sur PC1)
+    // (Le canal ADC ou l'entrée knock s'active généralement par la configuration logicielle du module knock)
 
     // ==========================================
     // 3. BUS CAN, VITESSE & FLEX FUEL
     // ==========================================
     engineConfiguration->canRxPin = Gpio::D0;             // CAN_RX
     engineConfiguration->canTxPin = Gpio::D1;             // CAN_TX
-    engineConfiguration->vssPin = Gpio::B4;               // ADS_VSS_Sensor_STM
+    engineConfiguration->vehicleSpeedSensorInputPin = Gpio::B4; // VSS (Nom officiel validé dans rusefi_config.txt)
     engineConfiguration->flexSensorPin = Gpio::E9;        // Flex_Sensor_STM
 
     // ==========================================
     // 4. BUS SPI & EXPANDEUR (MCP23S17)
     // ==========================================
+    engineConfiguration->is_enabled_spi_1 = true;
     engineConfiguration->spi1sckPin = Gpio::A5;           // MCP-SCK
     engineConfiguration->spi1misoPin = Gpio::A6;          // MCP-MISO
     engineConfiguration->spi1mosiPin = Gpio::A7;          // MCP-MOSI
-    engineConfiguration->mcpCsPin = Gpio::PE3;            // IO_CS
+    // Le Chip Select de l'expandeur (PE3 / IO_CS) se configure via les broches d'extension ou les structures dédiées
 
     // ==========================================
     // 5. GESTION DE L'ALIMENTATION & DÉMARRAGE
     // ==========================================
-    engineConfiguration->ignitionKeyPin = Gpio::B12;      // IGN_KEY_SENSE
-    engineConfiguration->mainRelayPin = Gpio::E0;         // MAIN_RLY_IN-ESP
-    engineConfiguration->fuelPumpPin = Gpio::D2;          // FUELPUMP_IN-ESP
-    engineConfiguration->tachoPin = Gpio::A8;             // TACHO-ESP
+    engineConfiguration->ignitionKeyDigitalPin = Gpio::B12; // IGN_KEY_SENSE
+    engineConfiguration->mainRelayPin = Gpio::E0;           // MAIN_RLY_IN-ESP
+    engineConfiguration->fuelPumpPin = Gpio::D2;            // FUELPUMP_IN-ESP
+    engineConfiguration->tachOutputPin = Gpio::A8;          // TACHO-ESP
 
     // ==========================================
     // 6. INJECTION & ALLUMAGE
@@ -70,21 +72,19 @@ void setup_custom_board_overrides() {
     engineConfiguration->triggerInputPins[0] = Gpio::E11; // CRANK_OUT-ESP
 
     // ==========================================
-    // 8. CONTRÔLE RALENTI (MOTEUR PAS-À-PAS / DRV8825)
+    // 8. CONTRÔLE RALENTI (MOTEUR PAS-À-PAS)
     // ==========================================
     engineConfiguration->stepperEnablePin = Gpio::D13;    // NENBL-ESP
-    engineConfiguration->idle.stepperDirectionPin = Gpio::D14; // DIR-ESP (Chemin correct struct idle)
-    engineConfiguration->idle.stepperStepPin = Gpio::D12;      // STEP-ESP (Chemin correct struct idle)
+    engineConfiguration->idle.stepperDirectionPin = Gpio::D14; // DIR-ESP (Structure idle)
+    engineConfiguration->idle.stepperStepPin = Gpio::D12;      // STEP-ESP (Structure idle)
 
     // ==========================================
     // 9. GESTION ANNEXE (CLIMATISATION, WBO)
     // ==========================================
-    engineConfiguration->acSwitch = Gpio::A4;             // AC_SW (Nom corrigé sans 'Pin')
+    engineConfiguration->acSwitch = Gpio::A4;             // AC_SW
     engineConfiguration->acRelayPin = Gpio::E1;           // AC_RELAY_IN-ESP
-    // engineConfiguration->canisterPin = Gpio::E2;       // Canister (géré via sortie programmable si besoin)
+    // engineConfiguration->canisterPin = Gpio::E2;       // Canister (géré en sortie programmable auxiliaire)
 
     // Sonde Large Bande (Chauffage)
-    engineConfiguration->o2heaterPin = Gpio::B14;         // WBO_HEAT_ESP (Nom corrigé en o2heaterPin)
-    // engineConfiguration->wboPumpPin = Gpio::PC8;        // WBO_PUMP_PWM-STM (Optionnel / Avancé)
-    // engineConfiguration->wboNernstPin = Gpio::PC9;      // WBO_NERNST_AC-STM (Optionnel / Avancé)
+    engineConfiguration->o2heaterPin = Gpio::B14;         // WBO_HEAT_ESP
 }
