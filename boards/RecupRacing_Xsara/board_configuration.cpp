@@ -66,6 +66,6 @@ void setup_custom_board_overrides() {
     engineConfiguration->acSwitch = Gpio::A4;
     engineConfiguration->acRelayPin = Gpio::E1;
     
-    // Lancement du driver autonome de la sonde Lambda
-    initWidebandDriver();
+    // Lancement du driver autonome de la sonde Lambda (DÉSACTIVÉ POUR TEST)
+    // initWidebandDriver();
 }

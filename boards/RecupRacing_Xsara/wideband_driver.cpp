@@ -124,7 +124,7 @@ static PWMConfig pwmcfg_pump = {
 
 enum class HeaterState { Preheat, WarmupRamp, ClosedLoop, Stopped };
 
-static THD_WORKING_AREA(waWidebandThread, 1024);
+static THD_WORKING_AREA(waWidebandThread, 2048);
 static THD_FUNCTION(WidebandThread, arg) {
     (void)arg;
     chRegSetThreadName("WBO Controller");
