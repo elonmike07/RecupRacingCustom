@@ -1,10 +1,10 @@
-#include "wideband_driver.h"
 #include "pch.h"
 
-// Le bootloader désactive les HAL ADC/PWM. On protège tout le bloc 
-// pour qu'il ne se compile que pour le firmware principal.
-#ifndef BOOTLOADER
+// Détection automatique : si sensor.h est présent (Firmware Principal), on compile le driver.
+// S'il est absent (Bootloader), tout le code est ignoré pour éviter les erreurs de type.
+#if __has_include("sensor.h")
 
+#include "wideband_driver.h"
 #include <rusefi/interpolation.h>
 
 // ChibiOS headers - Ordre strict et hiérarchique requis
@@ -199,10 +199,10 @@ static THD_FUNCTION(WidebandThread, arg) {
     }
 }
 
-#endif // BOOTLOADER
+#endif // __has_include("sensor.h")
 
 void initWidebandDriver(void) {
-#ifndef BOOTLOADER
+#if __has_include("sensor.h")
     palSetPadMode(GPIOC, 9, PAL_MODE_OUTPUT_PUSHPULL);
     palSetPadMode(GPIOA, 2, PAL_MODE_INPUT_ANALOG);
     palSetPadMode(GPIOA, 3, PAL_MODE_INPUT_ANALOG);
