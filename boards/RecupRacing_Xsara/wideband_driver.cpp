@@ -10,6 +10,8 @@
 // ChibiOS headers - Ordre strict et hiérarchique requis
 #include "ch.h"
 #include "hal.h"
+#include "osal.h"
+#include "board.h"
 #include "hal_adc.h"
 #include "hal_pwm.h"
 
