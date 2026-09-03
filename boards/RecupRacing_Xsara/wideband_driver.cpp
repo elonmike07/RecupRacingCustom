@@ -133,19 +133,16 @@ static THD_FUNCTION(WidebandThread, arg) {
     // =========================================================================
     // ASTUCE POUR LE COMPILATEUR (-Werror=unused-variable)
     // =========================================================================
-    (void)adcgrpcfg;
     (void)pwmcfg_heater;
     (void)pwmcfg_pump;
 
     // =========================================================================
-    // TEST D'ISOLATION MATERIELLE EXTREME :
-    // On met en commentaire les démarrages ADC et PWM.
-    // Si la carte ne plante plus avec ce code, le conflit vient d'ici !
+    // TEST 1 : ON REACTIVE UNIQUEMENT L'ADC3
     // =========================================================================
-    // adcStart(&ADCD3, NULL);
+    adcStart(&ADCD3, NULL);
     // pwmStart(&PWMD12, &pwmcfg_heater);
     // pwmStart(&PWMD8, &pwmcfg_pump);
-    // adcStartConversion(&ADCD3, &adcgrpcfg, samples, ADC_GRP_BUF_DEPTH);
+    adcStartConversion(&ADCD3, &adcgrpcfg, samples, ADC_GRP_BUF_DEPTH);
 
     HeaterState heaterState = HeaterState::Preheat;
     systime_t stateStartTime = chVTGetSystemTime();
@@ -216,7 +213,6 @@ static THD_FUNCTION(WidebandThread, arg) {
         if (dutyFraction > 1.0f) dutyFraction = 1.0f;
         if (vBatt >= 23.0f) dutyFraction = 0.0f; 
 
-        // Idem pour les écritures matérielles PWM (commentées)
         // pwmEnableChannel(&PWMD12, 0, (pwmcnt_t)(dutyFraction * 1000.0f));
 
         if (heaterState == HeaterState::ClosedLoop) {
