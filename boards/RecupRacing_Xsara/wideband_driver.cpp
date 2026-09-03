@@ -1,6 +1,8 @@
 #include "pch.h"
 #include "hal.h"
 
+// Le bootloader désactive les pilotes ADC et PWM dans son halconf.h.
+// On compile tout le driver Wideband uniquement si ces HAL sont activés (Firmware Principal).
 #if (defined(HAL_USE_ADC) && HAL_USE_ADC == TRUE) && (defined(HAL_USE_PWM) && HAL_USE_PWM == TRUE)
 
 #include "wideband_driver.h"
@@ -129,6 +131,13 @@ static THD_FUNCTION(WidebandThread, arg) {
     chThdSleepMilliseconds(3000);
 
     // =========================================================================
+    // ASTUCE POUR LE COMPILATEUR (-Werror=unused-variable)
+    // =========================================================================
+    (void)adcgrpcfg;
+    (void)pwmcfg_heater;
+    (void)pwmcfg_pump;
+
+    // =========================================================================
     // TEST D'ISOLATION MATERIELLE EXTREME :
     // On met en commentaire les démarrages ADC et PWM.
     // Si la carte ne plante plus avec ce code, le conflit vient d'ici !
@@ -207,7 +216,7 @@ static THD_FUNCTION(WidebandThread, arg) {
         if (dutyFraction > 1.0f) dutyFraction = 1.0f;
         if (vBatt >= 23.0f) dutyFraction = 0.0f; 
 
-        // Idem pour les écritures matérielles PWM
+        // Idem pour les écritures matérielles PWM (commentées)
         // pwmEnableChannel(&PWMD12, 0, (pwmcnt_t)(dutyFraction * 1000.0f));
 
         if (heaterState == HeaterState::ClosedLoop) {
