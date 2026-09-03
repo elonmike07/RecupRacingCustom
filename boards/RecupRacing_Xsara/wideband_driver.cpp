@@ -76,7 +76,7 @@ static void adccallback(ADCDriver *adcp) {
     r_3 = r_2; r_2 = r_1;
 }
 
-// Initialisation complète avec tous les champs requis (sqr2 et sqr3 inclus)
+// Initialisation complète (avec sqr2 et sqr3) pour satisfaire -Werror=missing-field-initializers
 static const ADCConversionGroup adcgrpcfg = {
     true,
     (uint16_t)ADC_GRP_NUM_CHANNELS,
@@ -91,7 +91,7 @@ static const ADCConversionGroup adcgrpcfg = {
     ADC_SQR3_SQ1_N(ADC_CHANNEL_IN2) | ADC_SQR3_SQ2_N(ADC_CHANNEL_IN3) // sqr3 (PA2 & PA3)
 };
 
-// Configuration PWMD12 (TIM12) pour le chauffage (PB14 - TIM12_CH1)
+// Configuration PWMD12 (TIM12) STRICTEMENT isolée pour le chauffage (PB14)
 static PWMConfig pwmcfg_heater = {
     100000,                               // frequency (100 Hz)
     1000,                                 // period
@@ -106,7 +106,7 @@ static PWMConfig pwmcfg_heater = {
     0                                     // cr2
 };
 
-// Configuration PWMD8 (TIM8) pour la pompe (PC8 - TIM8_CH3)
+// Configuration PWMD8 (TIM8) STRICTEMENT isolée pour la pompe (PC8)
 static PWMConfig pwmcfg_pump = {
     10000000,                             // frequency (10 MHz)
     1000,                                 // period
@@ -127,6 +127,8 @@ static THD_WORKING_AREA(waWidebandThread, 1024);
 static THD_FUNCTION(WidebandThread, arg) {
     (void)arg;
     chRegSetThreadName("WBO Controller");
+    
+    // Utilisation stricte de l'ADCD3
     adcStartConversion(&ADCD3, &adcgrpcfg, samples, ADC_GRP_BUF_DEPTH);
 
     HeaterState heaterState = HeaterState::Preheat;
@@ -192,7 +194,7 @@ static THD_FUNCTION(WidebandThread, arg) {
         if (dutyFraction > 1.0f) dutyFraction = 1.0f;
         if (vBatt >= 23.0f) dutyFraction = 0.0f; 
 
-        // Pilotage du chauffage sur PWMD12 (Canal 0 / CH1 pour PB14)
+        // Pilotage du chauffage sur PWMD12 (Isolé)
         pwmEnableChannel(&PWMD12, 0, (pwmcnt_t)(dutyFraction * 1000.0f));
 
         if (heaterState == HeaterState::ClosedLoop) {
@@ -201,14 +203,14 @@ static THD_FUNCTION(WidebandThread, arg) {
             if (pumpDuty > 950.0f) pumpDuty = 950.0f;
             if (pumpDuty < 50.0f)  pumpDuty = 50.0f;
             
-            // Pilotage de la pompe sur PWMD8 (Canal 2 / CH3 pour PC8)
+            // Pilotage de la pompe sur PWMD8 (Isolé)
             pwmEnableChannel(&PWMD8, 2, (pwmcnt_t)pumpDuty);
 
             float ratio = -1000.0f / (PUMP_CURRENT_SENSE_GAIN * LSU_SENSE_R);
             float currentLambda = CalculateLambda(pumpCurrentSenseVoltage * ratio);
             
-            // Assignation de la valeur Lambda via l'API rusEFI standard
-            Sensor::set(SensorType::Lambda1, currentLambda);
+            // API rusEFI correcte
+            Sensor::setSensorResult(SensorType::Lambda1, currentLambda);
         } else {
             pwmEnableChannel(&PWMD8, 2, 500); 
         }
@@ -222,8 +224,8 @@ void initWidebandDriver(void) {
     palSetPadMode(GPIOA, 2, PAL_MODE_INPUT_ANALOG);     // PA2 WBO UR (ADC3_IN2)
     palSetPadMode(GPIOA, 3, PAL_MODE_INPUT_ANALOG);     // PA3 WBO UA (ADC3_IN3)
 
-    palSetPadMode(GPIOB, 14, PAL_MODE_ALTERNATE(9));    // PB14 WBO HEAT (TIM12_CH1 - AF9)
-    palSetPadMode(GPIOC, 8, PAL_MODE_ALTERNATE(3));     // PC8 WBO PUMP PWM (TIM8_CH3 - AF3)
+    palSetPadMode(GPIOB, 14, PAL_MODE_ALTERNATE(9));    // PB14 WBO HEAT (AF9 pour TIM12_CH1)
+    palSetPadMode(GPIOC, 8, PAL_MODE_ALTERNATE(3));     // PC8 WBO PUMP PWM (AF3 pour TIM8_CH3)
 
     adcStart(&ADCD3, NULL);
     pwmStart(&PWMD12, &pwmcfg_heater);

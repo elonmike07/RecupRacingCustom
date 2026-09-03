@@ -1,8 +1,15 @@
 # Activation de la pile logicielle pour le bus CAN
 EFI_CAN_SUPPORT = yes
 
-# Activation du bootloader OpenBLT (décale l'adresse de liaison à 0x08010000)
-USE_OPENBLT = yes
+# ==========================================================
+# FORÇAGE MATÉRIEL POUR LA SONDE LARGE BANDE (ISOLATION MCU)
+# Ces lignes ordonnent au compilateur de forcer l'activation
+# de l'ADC3 et des TIM12 / TIM8 spécifiquement pour la carte,
+# contournant ainsi les limitations du mcuconf.h par défaut.
+# ==========================================================
+DDEFS += -DSTM32_ADC_USE_ADC3=TRUE
+DDEFS += -DSTM32_PWM_USE_TIM12=TRUE
+DDEFS += -DSTM32_PWM_USE_TIM8=TRUE
 
 ifneq ($(PROJECT_CPU),simulator)
 BOARDCPPSRC += \
