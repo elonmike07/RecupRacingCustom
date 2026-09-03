@@ -1,8 +1,6 @@
 #include "pch.h"
 #include "hal.h"
 
-// Le bootloader désactive les pilotes ADC et PWM dans son halconf.h.
-// On compile tout le driver Wideband uniquement si ces HAL sont activés (Firmware Principal).
 #if (defined(HAL_USE_ADC) && HAL_USE_ADC == TRUE) && (defined(HAL_USE_PWM) && HAL_USE_PWM == TRUE)
 
 #include "wideband_driver.h"
@@ -14,13 +12,11 @@
 #include "hal_pwm.h"
 #include "sensor.h"
 
-// Définitions pour l'ADC
 #define ADC_GRP_NUM_CHANNELS   2
 #define ADC_GRP_BUF_DEPTH      4
 
 static adcsample_t samples[ADC_GRP_NUM_CHANNELS * ADC_GRP_BUF_DEPTH];
 
-// Constantes de calibration (Bosch LSU 4.9)
 static constexpr float ESR_SENSE_ALPHA = 0.002f;
 static constexpr float PUMP_FILTER_ALPHA = 0.02f;
 static constexpr float PUMP_CURRENT_SENSE_GAIN = 10.0f;
@@ -41,7 +37,6 @@ static float r_3 __attribute__((unused)) = 0.0f;
 
 static inline float f_abs(float x) { return x > 0.0f ? x : -x; }
 
-// Calcul de la fonction de transfert Lambda
 static float GetPhiLsu49(float pumpCurrent) {
     if (pumpCurrent > 1.11f) return 0.5f;
     if (pumpCurrent < -3.5f) return 1.0f / 0.5f;
@@ -55,10 +50,9 @@ static float CalculateLambda(float pumpCurrentmA) {
     return 1.0f / phi;
 }
 
-// Callback de l'ADC isolé (ADCD3)
 static void adccallback(ADCDriver *adcp) {
     (void)adcp;
-    palTogglePad(GPIOC, 9); // PC9 NERNST_AC (synchronisation AC)
+    palTogglePad(GPIOC, 9); 
 
     uint32_t sumNernst = 0, sumPump = 0;
     for (size_t i = 0; i < ADC_GRP_BUF_DEPTH; i++) {
@@ -79,10 +73,6 @@ static void adccallback(ADCDriver *adcp) {
     r_3 = r_2; r_2 = r_1;
 }
 
-// =========================================================================
-// CONFIGURATIONS MATÉRIELLES (Avec Initialiseurs Désignés Anti-Erreur)
-// =========================================================================
-
 static const ADCConversionGroup adcgrpcfg = {
     .circular     = true,
     .num_channels = (uint16_t)ADC_GRP_NUM_CHANNELS,
@@ -94,7 +84,9 @@ static const ADCConversionGroup adcgrpcfg = {
     .smpr2        = ADC_SMPR2_SMP_AN2(ADC_SAMPLE_56) | ADC_SMPR2_SMP_AN3(ADC_SAMPLE_56),
     .sqr1         = (uint16_t)ADC_SQR1_NUM_CH(ADC_GRP_NUM_CHANNELS),
     .sqr2         = 0,
-    .sqr3         = ADC_SQR3_SQ1_N(ADC_CHANNEL_IN2) | ADC_SQR3_SQ2_N(ADC_CHANNEL_IN3)
+    .sqr3         = ADC_SQR3_SQ1_N(ADC_CHANNEL_IN2) | ADC_SQR3_SQ2_N(ADC_CHANNEL_IN3),
+    .htr          = 0,
+    .ltr          = 0
 };
 
 static PWMConfig pwmcfg_heater = {
@@ -102,11 +94,14 @@ static PWMConfig pwmcfg_heater = {
     .period    = 1000,
     .callback  = nullptr,
     .channels  = {
-        {.mode = PWM_OUTPUT_ACTIVE_HIGH, .callback = nullptr}, // CH1 (PB14)
-        {.mode = PWM_OUTPUT_DISABLED,    .callback = nullptr}, // CH2
-        {.mode = PWM_OUTPUT_DISABLED,    .callback = nullptr}, // CH3
-        {.mode = PWM_OUTPUT_DISABLED,    .callback = nullptr}  // CH4
-    }
+        {.mode = PWM_OUTPUT_ACTIVE_HIGH, .callback = nullptr}, 
+        {.mode = PWM_OUTPUT_DISABLED,    .callback = nullptr}, 
+        {.mode = PWM_OUTPUT_DISABLED,    .callback = nullptr}, 
+        {.mode = PWM_OUTPUT_DISABLED,    .callback = nullptr}  
+    },
+    .cr2       = 0,
+    .bdtr      = 0,
+    .dier      = 0
 };
 
 static PWMConfig pwmcfg_pump = {
@@ -114,16 +109,15 @@ static PWMConfig pwmcfg_pump = {
     .period    = 1000,
     .callback  = nullptr,
     .channels  = {
-        {.mode = PWM_OUTPUT_DISABLED,    .callback = nullptr}, // CH1
-        {.mode = PWM_OUTPUT_DISABLED,    .callback = nullptr}, // CH2
-        {.mode = PWM_OUTPUT_ACTIVE_HIGH, .callback = nullptr}, // CH3 (PC8)
-        {.mode = PWM_OUTPUT_DISABLED,    .callback = nullptr}  // CH4
-    }
+        {.mode = PWM_OUTPUT_DISABLED,    .callback = nullptr}, 
+        {.mode = PWM_OUTPUT_DISABLED,    .callback = nullptr}, 
+        {.mode = PWM_OUTPUT_ACTIVE_HIGH, .callback = nullptr}, 
+        {.mode = PWM_OUTPUT_DISABLED,    .callback = nullptr}  
+    },
+    .cr2       = 0,
+    .bdtr      = 0,
+    .dier      = 0
 };
-
-// =========================================================================
-// THREAD AUTONOME DE GESTION WIDEBAND
-// =========================================================================
 
 enum class HeaterState { Preheat, WarmupRamp, ClosedLoop, Stopped };
 
@@ -141,9 +135,9 @@ static THD_FUNCTION(WidebandThread, arg) {
     float integrator = 0.0f;
     float prevError = 0.0f;
     float pumpDuty = 500.0f;
-    float currentLambda = 1.0f; // Déclaré ici pour le scope global de la boucle
+    float currentLambda = 1.0f; 
 
-    int debugCounter = 0; // Compteur pour limiter l'envoi de messages console
+    int debugCounter = 0; 
 
     while (true) {
         systime_t now = chVTGetSystemTime();
@@ -205,7 +199,6 @@ static THD_FUNCTION(WidebandThread, arg) {
         if (dutyFraction > 1.0f) dutyFraction = 1.0f;
         if (vBatt >= 23.0f) dutyFraction = 0.0f; 
 
-        // Pilotage du PWM Chauffage
         pwmEnableChannel(&PWMD12, 0, (pwmcnt_t)(dutyFraction * 1000.0f));
 
         if (heaterState == HeaterState::ClosedLoop) {
@@ -219,21 +212,17 @@ static THD_FUNCTION(WidebandThread, arg) {
             float ratio = -1000.0f / (PUMP_CURRENT_SENSE_GAIN * LSU_SENSE_R);
             currentLambda = CalculateLambda(pumpCurrentSenseVoltage * ratio);
             
-            // Injection de la valeur Lambda dans rusEFI
             Sensor::setMockValue(SensorType::Lambda1, currentLambda);
         } else {
             pwmEnableChannel(&PWMD8, 2, 500); 
-            currentLambda = 1.0f; // Par défaut à l'air libre si pas en closed loop
+            currentLambda = 1.0f; 
         }
 
-        // =========================================================================
-        // SORTIE DEBUG (Toutes les secondes : 20 itérations de 50ms = 1000ms)
-        // =========================================================================
         debugCounter++;
         if (debugCounter >= 20) {
             efiPrintf("WBO Debug -> State: %d | ESR: %.1f ohm | Heater: %.2f V | Lambda: %.3f", 
                       (int)heaterState, sensorEsr, targetHeaterVoltage, currentLambda);
-            debugCounter = 0; // Reset du compteur
+            debugCounter = 0; 
         }
 
         chThdSleepMilliseconds(50); 
@@ -256,8 +245,5 @@ void initWidebandDriver(void) {
 }
 
 #else
-
-// Stub vide pour le bootloader
 void initWidebandDriver(void) {}
-
 #endif
