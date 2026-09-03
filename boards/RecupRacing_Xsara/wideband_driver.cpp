@@ -1,5 +1,10 @@
 #include "wideband_driver.h"
 #include "pch.h"
+
+// Le bootloader désactive les HAL ADC/PWM. On protège tout le bloc 
+// pour qu'il ne se compile que pour le firmware principal.
+#ifndef BOOTLOADER
+
 #include <rusefi/interpolation.h>
 
 // ChibiOS headers - Ordre strict et hiérarchique requis
@@ -192,7 +197,10 @@ static THD_FUNCTION(WidebandThread, arg) {
     }
 }
 
+#endif // BOOTLOADER
+
 void initWidebandDriver(void) {
+#ifndef BOOTLOADER
     palSetPadMode(GPIOC, 9, PAL_MODE_OUTPUT_PUSHPULL);
     palSetPadMode(GPIOA, 2, PAL_MODE_INPUT_ANALOG);
     palSetPadMode(GPIOA, 3, PAL_MODE_INPUT_ANALOG);
@@ -205,4 +213,5 @@ void initWidebandDriver(void) {
     pwmStart(&PWMD8, &pwmcfg_pump); // Démarre TIM8
 
     chThdCreateStatic(waWidebandThread, sizeof(waWidebandThread), NORMALPRIO + 1, WidebandThread, NULL);
+#endif
 }
