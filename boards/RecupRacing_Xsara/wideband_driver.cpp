@@ -129,9 +129,13 @@ static THD_FUNCTION(WidebandThread, arg) {
     (void)arg;
     chRegSetThreadName("WBO Controller");
     
-    chThdSleepMilliseconds(3000);
+    // =========================================================================
+    // DELAI DE GRÂCE : 45 secondes avant l'activation du matériel
+    // Cela te donne 45s d'USB stable pour taper "chibi_fault" après un plantage !
+    // =========================================================================
+    chThdSleepMilliseconds(45000);
 
-    // Initialisation globale avec PWMD3
+    // Initialisation globale avec PWMD3 (C'est ici que ça risque de planter)
     adcStart(&ADCD3, NULL);
     pwmStart(&PWMD12, &pwmcfg_heater);
     pwmStart(&PWMD3, &pwmcfg_pump);
