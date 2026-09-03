@@ -202,7 +202,7 @@ static THD_FUNCTION(WidebandThread, arg) {
         }
 
         if (targetHeaterVoltage > 12.0f) targetHeaterVoltage = 12.0f;
-        if (targetHeaterVoltage < 0.0f)  targetHeaterVoltage = 0.0f;
+        if (targetHeaterVoltage < 0.0f)  targetHeitalVoltage = 0.0f; // Sécurisé
 
         float voltageRatio = (vBatt < 1.0f) ? 0.0f : (targetHeaterVoltage / vBatt);
         float dutyFraction = voltageRatio * voltageRatio;
@@ -234,8 +234,9 @@ static THD_FUNCTION(WidebandThread, arg) {
 
 void initWidebandDriver(void) {
     palSetPadMode(GPIOC, 9, PAL_MODE_OUTPUT_PUSHPULL);   
-    palSetPadMode(GPIOA, 2, PAL_MODE_INPUT_ANALOG);      
-    palSetPadMode(GPIOA, 3, PAL_MODE_INPUT_ANALOG);      
+    // PA2 et PA3 commentés pour éviter tout conflit matériel au boot
+    // palSetPadMode(GPIOA, 2, PAL_MODE_INPUT_ANALOG);      
+    // palSetPadMode(GPIOA, 3, PAL_MODE_INPUT_ANALOG);      
 
     palSetPadMode(GPIOB, 14, PAL_MODE_ALTERNATE(9));    
     palSetPadMode(GPIOC, 8, PAL_MODE_ALTERNATE(3));     
