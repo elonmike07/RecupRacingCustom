@@ -75,21 +75,21 @@ static void adccallback(ADCDriver *adcp) {
     r_3 = r_2; r_2 = r_1;
 }
 
-// Configuration ADC avec l'ordre strict attendu par ChibiOS (.htr avant .ltr)[cite: 40]
+// Configuration ADC en initialisation positionnelle stricte (tous les champs couverts sans désignateurs)
 static const ADCConversionGroup adcgrpcfg = {
-    .circular     = true,
-    .num_channels = (uint16_t)ADC_GRP_NUM_CHANNELS,
-    .end_cb       = adccallback,
-    .error_cb     = nullptr,
-    .cr1          = 0,
-    .cr2          = ADC_CR2_SWSTART,
-    .smpr1        = 0,
-    .smpr2        = ADC_SMPR2_SMP_AN2(ADC_SAMPLE_56) | ADC_SMPR2_SMP_AN3(ADC_SAMPLE_56),
-    .sqr1         = (uint16_t)ADC_SQR1_NUM_CH(ADC_GRP_NUM_CHANNELS),
-    .sqr2         = 0,
-    .sqr3         = ADC_SQR3_SQ1_N(ADC_CHANNEL_IN2) | ADC_SQR3_SQ2_N(ADC_CHANNEL_IN3),
-    .htr          = 0, // .htr d'abord[cite: 40]
-    .ltr          = 0  // .ltr ensuite[cite: 40]
+    true,                                                                  // circular
+    (uint16_t)ADC_GRP_NUM_CHANNELS,                                        // num_channels
+    adccallback,                                                           // end_cb
+    nullptr,                                                               // error_cb
+    0,                                                                     // cr1
+    ADC_CR2_SWSTART,                                                       // cr2
+    0,                                                                     // smpr1
+    ADC_SMPR2_SMP_AN2(ADC_SAMPLE_56) | ADC_SMPR2_SMP_AN3(ADC_SAMPLE_56),   // smpr2
+    (uint16_t)ADC_SQR1_NUM_CH(ADC_GRP_NUM_CHANNELS),                       // sqr1
+    0,                                                                     // sqr2
+    ADC_SQR3_SQ1_N(ADC_CHANNEL_IN2) | ADC_SQR3_SQ2_N(ADC_CHANNEL_IN3),     // sqr3
+    0,                                                                     // htr
+    0                                                                      // ltr
 };
 
 static PWMConfig pwmcfg_heater = {
