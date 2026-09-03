@@ -1,6 +1,8 @@
 #include "pch.h"
 #include "hal.h"
 
+// Le bootloader désactive les pilotes ADC et PWM dans son halconf.h.
+// On compile tout le driver Wideband uniquement si ces HAL sont activés (Firmware Principal).
 #if (defined(HAL_USE_ADC) && HAL_USE_ADC == TRUE) && (defined(HAL_USE_PWM) && HAL_USE_PWM == TRUE)
 
 #include "wideband_driver.h"
@@ -104,6 +106,7 @@ static PWMConfig pwmcfg_heater = {
     .dier      = 0
 };
 
+// Configuration pour le Timer 3 (PWMD3)
 static PWMConfig pwmcfg_pump = {
     .frequency = 10000000,
     .period    = 1000,
@@ -111,7 +114,7 @@ static PWMConfig pwmcfg_pump = {
     .channels  = {
         {.mode = PWM_OUTPUT_DISABLED,    .callback = nullptr}, 
         {.mode = PWM_OUTPUT_DISABLED,    .callback = nullptr}, 
-        {.mode = PWM_OUTPUT_ACTIVE_HIGH, .callback = nullptr}, 
+        {.mode = PWM_OUTPUT_ACTIVE_HIGH, .callback = nullptr}, // Channel 3 actif
         {.mode = PWM_OUTPUT_DISABLED,    .callback = nullptr}  
     },
     .cr2       = 0,
@@ -128,18 +131,10 @@ static THD_FUNCTION(WidebandThread, arg) {
     
     chThdSleepMilliseconds(3000);
 
-    // =========================================================================
-    // ASTUCE COMPILATEUR (-Werror=unused-variable)
-    // =========================================================================
-    (void)pwmcfg_pump;
-
-    // =========================================================================
-    // TEST 2 : ON REACTIVE ADC3 + PWM12 (Chauffage)
-    // PWM8 (Pompe) reste désactivé.
-    // =========================================================================
+    // Initialisation globale avec PWMD3
     adcStart(&ADCD3, NULL);
     pwmStart(&PWMD12, &pwmcfg_heater);
-    // pwmStart(&PWMD8, &pwmcfg_pump);
+    pwmStart(&PWMD3, &pwmcfg_pump);
     adcStartConversion(&ADCD3, &adcgrpcfg, samples, ADC_GRP_BUF_DEPTH);
 
     HeaterState heaterState = HeaterState::Preheat;
@@ -220,14 +215,16 @@ static THD_FUNCTION(WidebandThread, arg) {
             if (pumpDuty > 950.0f) pumpDuty = 950.0f;
             if (pumpDuty < 50.0f)  pumpDuty = 50.0f;
             
-            // pwmEnableChannel(&PWMD8, 2, (pwmcnt_t)pumpDuty);
+            // RACTIVATION DE LA POMPE SUR PWMD3
+            pwmEnableChannel(&PWMD3, 2, (pwmcnt_t)pumpDuty);
 
             float ratio = -1000.0f / (PUMP_CURRENT_SENSE_GAIN * LSU_SENSE_R);
             currentLambda = CalculateLambda(pumpCurrentSenseVoltage * ratio);
             
             Sensor::setMockValue(SensorType::Lambda1, currentLambda);
         } else {
-            // pwmEnableChannel(&PWMD8, 2, 500); 
+            // RACTIVATION DE LA POMPE SUR PWMD3
+            pwmEnableChannel(&PWMD3, 2, 500); 
             currentLambda = 1.0f; 
         }
 
@@ -239,8 +236,12 @@ void initWidebandDriver(void) {
     palSetPadMode(GPIOC, 9, PAL_MODE_OUTPUT_PUSHPULL);   
     palSetPadMode(GPIOA, 2, PAL_MODE_INPUT_ANALOG);      
     palSetPadMode(GPIOA, 3, PAL_MODE_INPUT_ANALOG);      
+    
+    // TIM12_CH1 pour le Heater sur PB14
     palSetPadMode(GPIOB, 14, PAL_MODE_ALTERNATE(9));    
-    palSetPadMode(GPIOC, 8, PAL_MODE_ALTERNATE(3));     
+    
+    // TIM3_CH3 pour la pompe sur PC8 (AF2 au lieu de AF3)
+    palSetPadMode(GPIOC, 8, PAL_MODE_ALTERNATE(2));     
 
     chThdCreateStatic(waWidebandThread, sizeof(waWidebandThread), NORMALPRIO + 1, WidebandThread, NULL);
 }
