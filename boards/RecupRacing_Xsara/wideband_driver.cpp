@@ -75,7 +75,7 @@ static void adccallback(ADCDriver *adcp) {
     r_3 = r_2; r_2 = r_1;
 }
 
-// Configuration ADC corrigée avec l'ordre strict (.ltr avant .htr)
+// Configuration ADC avec l'ordre strict attendu par ChibiOS (.htr avant .ltr)[cite: 40]
 static const ADCConversionGroup adcgrpcfg = {
     .circular     = true,
     .num_channels = (uint16_t)ADC_GRP_NUM_CHANNELS,
@@ -88,8 +88,8 @@ static const ADCConversionGroup adcgrpcfg = {
     .sqr1         = (uint16_t)ADC_SQR1_NUM_CH(ADC_GRP_NUM_CHANNELS),
     .sqr2         = 0,
     .sqr3         = ADC_SQR3_SQ1_N(ADC_CHANNEL_IN2) | ADC_SQR3_SQ2_N(ADC_CHANNEL_IN3),
-    .ltr          = 0,
-    .htr          = 0
+    .htr          = 0, // .htr d'abord[cite: 40]
+    .ltr          = 0  // .ltr ensuite[cite: 40]
 };
 
 static PWMConfig pwmcfg_heater = {
