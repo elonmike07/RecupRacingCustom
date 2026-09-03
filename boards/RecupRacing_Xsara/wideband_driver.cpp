@@ -1,6 +1,8 @@
 #include "pch.h"
 #include "hal.h"
 
+// Le bootloader désactive les pilotes ADC et PWM dans son halconf.h.
+// On compile tout le driver Wideband uniquement si ces HAL sont activés (Firmware Principal).
 #if (defined(HAL_USE_ADC) && HAL_USE_ADC == TRUE) && (defined(HAL_USE_PWM) && HAL_USE_PWM == TRUE)
 
 #include "wideband_driver.h"
@@ -73,6 +75,7 @@ static void adccallback(ADCDriver *adcp) {
     r_3 = r_2; r_2 = r_1;
 }
 
+// Configuration ADC corrigée avec l'ordre strict (.ltr avant .htr)
 static const ADCConversionGroup adcgrpcfg = {
     .circular     = true,
     .num_channels = (uint16_t)ADC_GRP_NUM_CHANNELS,
@@ -85,8 +88,8 @@ static const ADCConversionGroup adcgrpcfg = {
     .sqr1         = (uint16_t)ADC_SQR1_NUM_CH(ADC_GRP_NUM_CHANNELS),
     .sqr2         = 0,
     .sqr3         = ADC_SQR3_SQ1_N(ADC_CHANNEL_IN2) | ADC_SQR3_SQ2_N(ADC_CHANNEL_IN3),
-    .htr          = 0,
-    .ltr          = 0
+    .ltr          = 0,
+    .htr          = 0
 };
 
 static PWMConfig pwmcfg_heater = {
