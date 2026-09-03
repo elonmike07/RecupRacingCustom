@@ -1,21 +1,17 @@
 #include "pch.h"
+#include "hal.h"
 
-// Détection automatique : si sensor.h est présent (Firmware Principal), on compile tout le driver.
-// S'il est absent (Bootloader), tout le contenu est ignoré pour éviter les erreurs de type HAL.
-#if __has_include("sensor.h")
+// Le bootloader désactive les pilotes ADC et PWM dans son halconf.h.
+// On compile tout le driver Wideband uniquement si ces HAL sont activés (Firmware Principal).
+#if (defined(HAL_USE_ADC) && HAL_USE_ADC == TRUE) && (defined(HAL_USE_PWM) && HAL_USE_PWM == TRUE)
 
 #include "wideband_driver.h"
 #include <rusefi/interpolation.h>
-
-// ChibiOS headers - Ordre strict et hiérarchique requis
 #include "ch.h"
-#include "hal.h"
 #include "osal.h"
 #include "board.h"
 #include "hal_adc.h"
 #include "hal_pwm.h"
-
-// Application headers
 #include "sensor.h"
 
 #define ADC_GRP_NUM_CHANNELS   2
@@ -186,7 +182,7 @@ static THD_FUNCTION(WidebandThread, arg) {
             pumpDuty += nernstErr * 25.0f;
             if (pumpDuty > 950.0f) pumpDuty = 950.0f;
             if (pumpDuty < 50.0f)  pumpDuty = 50.0f;
-            pwmEnableChannel(&PWMD8, 2, (pwmcnt_t)pumpDuty); // PWMD8 pour la pompe (isolée)
+            pwmEnableChannel(&PWMD8, 2, (pwmcnt_t)pumpDuty);
 
             float ratio = -1000.0f / (PUMP_CURRENT_SENSE_GAIN * LSU_SENSE_R);
             float currentLambda = CalculateLambda(pumpCurrentSenseVoltage * ratio);
@@ -209,14 +205,14 @@ void initWidebandDriver(void) {
 
     adcStart(&ADCD3, NULL);
     pwmStart(&PWMD12, &pwmcfg_heater);
-    pwmStart(&PWMD8, &pwmcfg_pump); // Démarre TIM8
+    pwmStart(&PWMD8, &pwmcfg_pump);
 
     chThdCreateStatic(waWidebandThread, sizeof(waWidebandThread), NORMALPRIO + 1, WidebandThread, NULL);
 }
 
 #else
 
-// Stub vide pour le bootloader (permet d'ignorer tout le code HAL sans erreur de type)
+// Stub vide pour le bootloader (les HAL ADC/PWM étant désactivés, ce bloc est ignoré)
 void initWidebandDriver(void) {}
 
-#endif // __has_include("sensor.h")
+#endif
