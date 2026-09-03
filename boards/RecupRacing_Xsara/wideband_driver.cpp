@@ -106,15 +106,15 @@ static PWMConfig pwmcfg_heater = {
     .dier      = 0
 };
 
-// Configuration pour le Timer 3 (PWMD3)
+// Configuration pour le Timer 3 (PWMD3) validée par l'OS (100kHz / période 10 = 10kHz)
 static PWMConfig pwmcfg_pump = {
-    .frequency = 10000000,
-    .period    = 1000,
+    .frequency = 100000,
+    .period    = 10,
     .callback  = nullptr,
     .channels  = {
         {.mode = PWM_OUTPUT_DISABLED,    .callback = nullptr}, 
         {.mode = PWM_OUTPUT_DISABLED,    .callback = nullptr}, 
-        {.mode = PWM_OUTPUT_ACTIVE_HIGH, .callback = nullptr}, // Channel 3 actif
+        {.mode = PWM_OUTPUT_ACTIVE_HIGH, .callback = nullptr}, // Channel 3 actif sur PC8
         {.mode = PWM_OUTPUT_DISABLED,    .callback = nullptr}  
     },
     .cr2       = 0,
@@ -129,13 +129,10 @@ static THD_FUNCTION(WidebandThread, arg) {
     (void)arg;
     chRegSetThreadName("WBO Controller");
     
-    // =========================================================================
-    // DELAI DE GRÂCE : 45 secondes avant l'activation du matériel
-    // Cela te donne 45s d'USB stable pour taper "chibi_fault" après un plantage !
-    // =========================================================================
-    chThdSleepMilliseconds(45000);
+    // Délai de sécurité optionnel (tu peux le laisser à 3000 ms maintenant que le plantage d'horloge est résolu)
+    chThdSleepMilliseconds(3000);
 
-    // Initialisation globale avec PWMD3 (C'est ici que ça risque de planter)
+    // Initialisation globale avec PWMD3 sécurisé
     adcStart(&ADCD3, NULL);
     pwmStart(&PWMD12, &pwmcfg_heater);
     pwmStart(&PWMD3, &pwmcfg_pump);
@@ -210,7 +207,7 @@ static THD_FUNCTION(WidebandThread, arg) {
         if (dutyFraction > 1.0f) dutyFraction = 1.0f;
         if (vBatt >= 23.0f) dutyFraction = 0.0f; 
 
-        // RACTIVATION DES COMMANDES PWM DU CHAUFFAGE (TIM12)
+        // PWM Chauffage (TIM12)
         pwmEnableChannel(&PWMD12, 0, (pwmcnt_t)(dutyFraction * 1000.0f));
 
         if (heaterState == HeaterState::ClosedLoop) {
@@ -219,16 +216,16 @@ static THD_FUNCTION(WidebandThread, arg) {
             if (pumpDuty > 950.0f) pumpDuty = 950.0f;
             if (pumpDuty < 50.0f)  pumpDuty = 50.0f;
             
-            // RACTIVATION DE LA POMPE SUR PWMD3
-            pwmEnableChannel(&PWMD3, 2, (pwmcnt_t)pumpDuty);
+            // PWM Pompe (TIM3) - Conversion de l'échelle 0-1000 vers la période 0-10
+            pwmEnableChannel(&PWMD3, 2, (pwmcnt_t)(pumpDuty / 100.0f));
 
             float ratio = -1000.0f / (PUMP_CURRENT_SENSE_GAIN * LSU_SENSE_R);
             currentLambda = CalculateLambda(pumpCurrentSenseVoltage * ratio);
             
             Sensor::setMockValue(SensorType::Lambda1, currentLambda);
         } else {
-            // RACTIVATION DE LA POMPE SUR PWMD3
-            pwmEnableChannel(&PWMD3, 2, 500); 
+            // PWM Pompe en mode attente (Duty à 50% -> valeur 5 pour une période de 10)
+            pwmEnableChannel(&PWMD3, 2, 5); 
             currentLambda = 1.0f; 
         }
 
@@ -244,7 +241,7 @@ void initWidebandDriver(void) {
     // TIM12_CH1 pour le Heater sur PB14
     palSetPadMode(GPIOB, 14, PAL_MODE_ALTERNATE(9));    
     
-    // TIM3_CH3 pour la pompe sur PC8 (AF2 au lieu de AF3)
+    // TIM3_CH3 pour la pompe sur PC8 (AF2)
     palSetPadMode(GPIOC, 8, PAL_MODE_ALTERNATE(2));     
 
     chThdCreateStatic(waWidebandThread, sizeof(waWidebandThread), NORMALPRIO + 1, WidebandThread, NULL);
