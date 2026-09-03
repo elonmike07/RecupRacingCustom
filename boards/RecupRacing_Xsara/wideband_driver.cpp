@@ -124,13 +124,13 @@ static PWMConfig pwmcfg_pump = {
 
 enum class HeaterState { Preheat, WarmupRamp, ClosedLoop, Stopped };
 
-// Pile sécurisée à 2Ko pour éviter tout stack overflow
+// Pile sécurisée à 2Ko pour éviter tout dépassement
 static THD_WORKING_AREA(waWidebandThread, 2048);
 static THD_FUNCTION(WidebandThread, arg) {
     (void)arg;
     chRegSetThreadName("WBO Controller");
     
-    // Sécurité supplémentaire : on attend encore 3 secondes dans le thread
+    // Délai de sécurité pour laisser l'USB et le système s'initialiser totalement
     chThdSleepMilliseconds(3000);
 
     // Initialisation des périphériques ADC et PWM
@@ -148,8 +148,6 @@ static THD_FUNCTION(WidebandThread, arg) {
     float prevError = 0.0f;
     float pumpDuty = 500.0f;
     float currentLambda = 1.0f; 
-
-    int debugCounter = 0; 
 
     while (true) {
         systime_t now = chVTGetSystemTime();
@@ -199,6 +197,7 @@ static THD_FUNCTION(WidebandThread, arg) {
             }
             case HeaterState::Stopped:
             default:
+                targetHeitalVoltage = 0.0f; // Note: gardé conforme
                 targetHeaterVoltage = 0.0f;
                 break;
         }
@@ -230,12 +229,7 @@ static THD_FUNCTION(WidebandThread, arg) {
             currentLambda = 1.0f; 
         }
 
-        debugCounter++;
-        if (debugCounter >= 20) {
-            efiPrintf("WBO Debug -> State: %d | ESR: %.1f ohm | Heater: %.2f V | Lambda: %.3f", 
-                      (int)heaterState, sensorEsr, targetHeaterVoltage, currentLambda);
-            debugCounter = 0; 
-        }
+        // Logs de debug efiPrintf supprimés pour garantir zéro saturation du port série/USB
 
         chThdSleepMilliseconds(50); 
     }
