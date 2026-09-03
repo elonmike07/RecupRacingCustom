@@ -202,7 +202,7 @@ static THD_FUNCTION(WidebandThread, arg) {
         }
 
         if (targetHeaterVoltage > 12.0f) targetHeaterVoltage = 12.0f;
-        if (targetHeaterVoltage < 0.0f)  targetHeitalVoltage = 0.0f; // Sécurisé
+        if (targetHeaterVoltage < 0.0f)  targetHeaterVoltage = 0.0f; // Corrigé ici
 
         float voltageRatio = (vBatt < 1.0f) ? 0.0f : (targetHeaterVoltage / vBatt);
         float dutyFraction = voltageRatio * voltageRatio;
