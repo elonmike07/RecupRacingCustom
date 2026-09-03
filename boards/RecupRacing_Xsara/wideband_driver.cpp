@@ -52,14 +52,15 @@ static float CalculateLambda(float pumpCurrentmA) {
     return 1.0f / phi;
 }
 
-static void adccallback(ADCDriver *adcp, adcsample_t *buffer, size_t n) {
-    (void)adcp; (void)n;
-    palTogglePad(GPIOC, 9); // Bascule d'injection AC
+// Signature standard et valide pour adccallback_t dans ChibiOS
+static void adccallback(ADCDriver *adcp) {
+    (void)adcp;
+    palTogglePad(GPIOC, 9); // PC9 NERNST_AC (synchronisation AC)
 
     uint32_t sumNernst = 0, sumPump = 0;
     for (size_t i = 0; i < ADC_GRP_BUF_DEPTH; i++) {
-        sumNernst += buffer[i * ADC_GRP_NUM_CHANNELS + 0];
-        sumPump   += buffer[i * ADC_GRP_NUM_CHANNELS + 1];
+        sumNernst += samples[i * ADC_GRP_NUM_CHANNELS + 0];
+        sumPump   += samples[i * ADC_GRP_NUM_CHANNELS + 1];
     }
 
     r_1 = ((float)sumNernst / ADC_GRP_BUF_DEPTH) * (3.3f / 4095.0f);
@@ -77,31 +78,44 @@ static void adccallback(ADCDriver *adcp, adcsample_t *buffer, size_t n) {
 
 static const ADCConversionGroup adcgrpcfg = {
     true,
-    ADC_GRP_NUM_CHANNELS,
+    (uint16_t)ADC_GRP_NUM_CHANNELS,
     adccallback,
     NULL,
     0,
     ADC_CR2_SWSTART,
-    0, // Pas de SMPR1 pour les canaux 2 et 3
-    ADC_SMPR2_SMP_AN2(ADC_SAMPLE_56) | ADC_SMPR2_SMP_AN3(ADC_SAMPLE_56),
-    ADC_SQR1_NUM_CH(ADC_GRP_NUM_CHANNELS),
     0,
-    ADC_SQR3_SQ1_N(ADC_CHANNEL_IN2) | ADC_SQR3_SQ2_N(ADC_CHANNEL_IN3)
+    ADC_SMPR2_SMP_AN2(ADC_SAMPLE_56) | ADC_SMPR2_SMP_AN3(ADC_SAMPLE_56),
+    (uint16_t)ADC_SQR1_NUM_CH(ADC_GRP_NUM_CHANNELS), // Cast explicite anti-narrowing
+    0,
+    ADC_SQR3_SQ1_N(ADC_CHANNEL_IN2) | ADC_SQR3_SQ2_N(ADC_CHANNEL_IN3) // PA2 (IN2) & PA3 (IN3)
 };
 
+// Configuration TIM12 (PWMD12) pour le chauffage (PB14 - TIM12_CH1) avec initialisation complète des champs dier/cr2
 static PWMConfig pwmcfg_heater = {
-    100000, 1000, NULL, // 100 Hz
-    {{PWM_OUTPUT_ACTIVE_HIGH, NULL}, {PWM_OUTPUT_DISABLED, NULL}}, 0, 0
+    100000,                               // frequency (100 Hz)
+    1000,                                 // period
+    NULL,                                 // callback
+    {
+        {PWM_OUTPUT_ACTIVE_HIGH, NULL},   // CH1 (PB14 WBO HEAT)
+        {PWM_OUTPUT_DISABLED, NULL}       // CH2
+    },
+    0,                                    // dier
+    0                                     // cr2
 };
 
+// Configuration TIM8 (PWMD8) pour la pompe (PC8 - TIM8_CH3) avec initialisation complète
 static PWMConfig pwmcfg_pump = {
-    10000000, 1000, NULL, // 10 kHz (Horloge 10MHz)
+    10000000,                             // frequency (10 MHz)
+    1000,                                 // period
+    NULL,                                 // callback
     {
-        {PWM_OUTPUT_DISABLED, NULL},
-        {PWM_OUTPUT_DISABLED, NULL},
-        {PWM_OUTPUT_ACTIVE_HIGH, NULL}, // Canal 3
-        {PWM_OUTPUT_DISABLED, NULL}
-    }, 0, 0
+        {PWM_OUTPUT_DISABLED, NULL},      // CH1
+        {PWM_OUTPUT_DISABLED, NULL},      // CH2
+        {PWM_OUTPUT_ACTIVE_HIGH, NULL},   // CH3 (PC8 WBO PUMP PWM)
+        {PWM_OUTPUT_DISABLED, NULL}       // CH4
+    },
+    0,                                    // dier
+    0                                     // cr2
 };
 
 enum class HeaterState { Preheat, WarmupRamp, ClosedLoop, Stopped };
@@ -175,6 +189,7 @@ static THD_FUNCTION(WidebandThread, arg) {
         if (dutyFraction > 1.0f) dutyFraction = 1.0f;
         if (vBatt >= 23.0f) dutyFraction = 0.0f; 
 
+        // Pilotage du chauffage sur PWMD12 (Canal 0 / CH1 pour PB14)
         pwmEnableChannel(&PWMD12, 0, (pwmcnt_t)(dutyFraction * 1000.0f));
 
         if (heaterState == HeaterState::ClosedLoop) {
@@ -182,11 +197,15 @@ static THD_FUNCTION(WidebandThread, arg) {
             pumpDuty += nernstErr * 25.0f;
             if (pumpDuty > 950.0f) pumpDuty = 950.0f;
             if (pumpDuty < 50.0f)  pumpDuty = 50.0f;
+            
+            // Pilotage de la pompe sur PWMD8 (Canal 2 / CH3 pour PC8)
             pwmEnableChannel(&PWMD8, 2, (pwmcnt_t)pumpDuty);
 
             float ratio = -1000.0f / (PUMP_CURRENT_SENSE_GAIN * LSU_SENSE_R);
             float currentLambda = CalculateLambda(pumpCurrentSenseVoltage * ratio);
-            Sensor::set(SensorType::Lambda1, currentLambda);
+            
+            // Assignation de la valeur Lambda via l'API rusEFI standard
+            Sensor::setSensor(SensorType::Lambda1, currentLambda);
         } else {
             pwmEnableChannel(&PWMD8, 2, 500); 
         }
@@ -196,12 +215,12 @@ static THD_FUNCTION(WidebandThread, arg) {
 }
 
 void initWidebandDriver(void) {
-    palSetPadMode(GPIOC, 9, PAL_MODE_OUTPUT_PUSHPULL);
-    palSetPadMode(GPIOA, 2, PAL_MODE_INPUT_ANALOG);
-    palSetPadMode(GPIOA, 3, PAL_MODE_INPUT_ANALOG);
+    palSetPadMode(GPIOC, 9, PAL_MODE_OUTPUT_PUSHPULL);   // PC9 NERNST_AC
+    palSetPadMode(GPIOA, 2, PAL_MODE_INPUT_ANALOG);     // PA2 WBO UR (ADC3_IN2)
+    palSetPadMode(GPIOA, 3, PAL_MODE_INPUT_ANALOG);     // PA3 WBO UA (ADC3_IN3)
 
-    palSetPadMode(GPIOB, 14, PAL_MODE_ALTERNATE(9)); // TIM12_CH1
-    palSetPadMode(GPIOC, 8, PAL_MODE_ALTERNATE(3));  // TIM8_CH3
+    palSetPadMode(GPIOB, 14, PAL_MODE_ALTERNATE(9));    // PB14 WBO HEAT (TIM12_CH1 - AF9)
+    palSetPadMode(GPIOC, 8, PAL_MODE_ALTERNATE(3));     // PC8 WBO PUMP PWM (TIM8_CH3 - AF3)
 
     adcStart(&ADCD3, NULL);
     pwmStart(&PWMD12, &pwmcfg_heater);
@@ -212,7 +231,7 @@ void initWidebandDriver(void) {
 
 #else
 
-// Stub vide pour le bootloader (les HAL ADC/PWM étant désactivés, ce bloc est ignoré)
+// Stub vide pour le bootloader
 void initWidebandDriver(void) {}
 
 #endif
