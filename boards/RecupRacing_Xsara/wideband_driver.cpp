@@ -75,7 +75,7 @@ static void adccallback(ADCDriver *adcp) {
     r_3 = r_2; r_2 = r_1;
 }
 
-// Configuration ADC en initialisation positionnelle stricte (tous les champs couverts sans désignateurs)
+// Configuration ADC en initialisation positionnelle stricte
 static const ADCConversionGroup adcgrpcfg = {
     true,                                                                  // circular
     (uint16_t)ADC_GRP_NUM_CHANNELS,                                        // num_channels
@@ -124,15 +124,16 @@ static PWMConfig pwmcfg_pump = {
 
 enum class HeaterState { Preheat, WarmupRamp, ClosedLoop, Stopped };
 
+// Pile sécurisée à 2Ko pour éviter tout stack overflow
 static THD_WORKING_AREA(waWidebandThread, 2048);
 static THD_FUNCTION(WidebandThread, arg) {
     (void)arg;
     chRegSetThreadName("WBO Controller");
     
-    // RETARD DE SECURITE : On attend 3 secondes que l'USB et rusEFI bootent complètement
+    // Sécurité supplémentaire : on attend encore 3 secondes dans le thread
     chThdSleepMilliseconds(3000);
 
-    // Initialisation sécurisée des périphériques après le démarrage du système
+    // Initialisation des périphériques ADC et PWM
     adcStart(&ADCD3, NULL);
     pwmStart(&PWMD12, &pwmcfg_heater);
     pwmStart(&PWMD8, &pwmcfg_pump);
@@ -247,9 +248,6 @@ void initWidebandDriver(void) {
 
     palSetPadMode(GPIOB, 14, PAL_MODE_ALTERNATE(9));    
     palSetPadMode(GPIOC, 8, PAL_MODE_ALTERNATE(3));     
-
-    // L'initialisation lourde (adcStart / pwmStart) a été déplacée 
-    // à l'intérieur du thread pour ne pas bloquer le boot USB de l'ECU.
 
     chThdCreateStatic(waWidebandThread, sizeof(waWidebandThread), NORMALPRIO + 1, WidebandThread, NULL);
 }
