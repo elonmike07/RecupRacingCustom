@@ -7,5 +7,6 @@ USE_OPENBLT = yes
 ifneq ($(PROJECT_CPU),simulator)
 BOARDCPPSRC += \
     $(BOARD_DIR)/board_configuration.cpp \
+    $(BOARD_DIR)/wideband_driver.cpp \
 
 endif
