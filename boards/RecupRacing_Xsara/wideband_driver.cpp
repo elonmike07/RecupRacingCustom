@@ -1,11 +1,14 @@
 #include "wideband_driver.h"
 #include "pch.h"
 #include <rusefi/interpolation.h>
+
+// ChibiOS headers - Ordre strict et hiérarchique requis
 #include "ch.h"
 #include "hal.h"
 #include "hal_adc.h"
 #include "hal_pwm.h"
-#include "hal_st.h"
+
+// Application headers
 #include "sensor.h"
 
 #define ADC_GRP_NUM_CHANNELS   2
@@ -195,7 +198,7 @@ void initWidebandDriver(void) {
     palSetPadMode(GPIOA, 3, PAL_MODE_INPUT_ANALOG);
 
     palSetPadMode(GPIOB, 14, PAL_MODE_ALTERNATE(9)); // TIM12_CH1
-    palSetPadMode(GPIOC, 8, PAL_MODE_ALTERNATE(3));  // TIM8_CH3 au lieu de TIM3 !
+    palSetPadMode(GPIOC, 8, PAL_MODE_ALTERNATE(3));  // TIM8_CH3
 
     adcStart(&ADCD3, NULL);
     pwmStart(&PWMD12, &pwmcfg_heater);
