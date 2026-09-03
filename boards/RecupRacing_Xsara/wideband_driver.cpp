@@ -1,6 +1,9 @@
 #include "wideband_driver.h"
 #include "pch.h"
 #include <rusefi/interpolation.h>
+#include "hal.h"
+#include "hal_adc.h"
+#include "hal_pwm.h"
 
 #define ADC_GRP_NUM_CHANNELS   2
 #define ADC_GRP_BUF_DEPTH      4
@@ -21,7 +24,7 @@ static volatile float nernstDc = 0.45f;
 static volatile float nernstAc = 0.0f;
 static volatile float pumpCurrentSenseVoltage = 0.0f;
 
-static float r_1 = 0.0f, r_2 = 0.0f, r_3 = 0.0f;
+static float r_1 = 0.0f, r_2 = 0.0f, r_3 = 0.0f __attribute__((unused));
 
 static inline float f_abs(float x) { return x > 0.0f ? x : -x; }
 
