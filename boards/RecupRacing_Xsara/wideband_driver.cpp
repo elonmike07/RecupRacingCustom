@@ -129,6 +129,14 @@ static THD_FUNCTION(WidebandThread, arg) {
     (void)arg;
     chRegSetThreadName("WBO Controller");
     
+    // RETARD DE SECURITE : On attend 3 secondes que l'USB et rusEFI bootent complètement
+    chThdSleepMilliseconds(3000);
+
+    // Initialisation sécurisée des périphériques après le démarrage du système
+    adcStart(&ADCD3, NULL);
+    pwmStart(&PWMD12, &pwmcfg_heater);
+    pwmStart(&PWMD8, &pwmcfg_pump);
+
     adcStartConversion(&ADCD3, &adcgrpcfg, samples, ADC_GRP_BUF_DEPTH);
 
     HeaterState heaterState = HeaterState::Preheat;
@@ -240,9 +248,8 @@ void initWidebandDriver(void) {
     palSetPadMode(GPIOB, 14, PAL_MODE_ALTERNATE(9));    
     palSetPadMode(GPIOC, 8, PAL_MODE_ALTERNATE(3));     
 
-    adcStart(&ADCD3, NULL);
-    pwmStart(&PWMD12, &pwmcfg_heater);
-    pwmStart(&PWMD8, &pwmcfg_pump);
+    // L'initialisation lourde (adcStart / pwmStart) a été déplacée 
+    // à l'intérieur du thread pour ne pas bloquer le boot USB de l'ECU.
 
     chThdCreateStatic(waWidebandThread, sizeof(waWidebandThread), NORMALPRIO + 1, WidebandThread, NULL);
 }
