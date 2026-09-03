@@ -6,6 +6,7 @@
 #include "hal_adc.h"
 #include "hal_pwm.h"
 #include "hal_st.h"
+#include "sensor.h"
 
 #define ADC_GRP_NUM_CHANNELS   2
 #define ADC_GRP_BUF_DEPTH      4
