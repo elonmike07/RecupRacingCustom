@@ -1,7 +1,7 @@
 #include "pch.h"
 
 // Détection automatique : si sensor.h est présent (Firmware Principal), on compile tout le driver.
-// S'il est absent (Bootloader), tout le contenu est ignoré pour éviter les erreurs de type.
+// S'il est absent (Bootloader), tout le contenu est ignoré pour éviter les erreurs de type HAL.
 #if __has_include("sensor.h")
 
 #include "wideband_driver.h"
@@ -216,7 +216,7 @@ void initWidebandDriver(void) {
 
 #else
 
-// Stub vide pour le build du bootloader (laisse passer la compilation sans types HAL)
+// Stub vide pour le bootloader (permet d'ignorer tout le code HAL sans erreur de type)
 void initWidebandDriver(void) {}
 
 #endif // __has_include("sensor.h")
