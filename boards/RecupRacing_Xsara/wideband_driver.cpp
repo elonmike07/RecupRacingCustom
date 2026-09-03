@@ -1,8 +1,6 @@
 #include "pch.h"
 #include "hal.h"
 
-// Le bootloader désactive les pilotes ADC et PWM dans son halconf.h.
-// On compile tout le driver Wideband uniquement si ces HAL sont activés (Firmware Principal).
 #if (defined(HAL_USE_ADC) && HAL_USE_ADC == TRUE) && (defined(HAL_USE_PWM) && HAL_USE_PWM == TRUE)
 
 #include "wideband_driver.h"
@@ -75,21 +73,20 @@ static void adccallback(ADCDriver *adcp) {
     r_3 = r_2; r_2 = r_1;
 }
 
-// Configuration ADC en initialisation positionnelle stricte
 static const ADCConversionGroup adcgrpcfg = {
-    true,                                                                  // circular
-    (uint16_t)ADC_GRP_NUM_CHANNELS,                                        // num_channels
-    adccallback,                                                           // end_cb
-    nullptr,                                                               // error_cb
-    0,                                                                     // cr1
-    ADC_CR2_SWSTART,                                                       // cr2
-    0,                                                                     // smpr1
-    ADC_SMPR2_SMP_AN2(ADC_SAMPLE_56) | ADC_SMPR2_SMP_AN3(ADC_SAMPLE_56),   // smpr2
-    (uint16_t)ADC_SQR1_NUM_CH(ADC_GRP_NUM_CHANNELS),                       // sqr1
-    0,                                                                     // sqr2
-    ADC_SQR3_SQ1_N(ADC_CHANNEL_IN2) | ADC_SQR3_SQ2_N(ADC_CHANNEL_IN3),     // sqr3
-    0,                                                                     // htr
-    0                                                                      // ltr
+    true,                                                                  
+    (uint16_t)ADC_GRP_NUM_CHANNELS,                                        
+    adccallback,                                                           
+    nullptr,                                                               
+    0,                                                                     
+    ADC_CR2_SWSTART,                                                       
+    0,                                                                     
+    ADC_SMPR2_SMP_AN2(ADC_SAMPLE_56) | ADC_SMPR2_SMP_AN3(ADC_SAMPLE_56),   
+    (uint16_t)ADC_SQR1_NUM_CH(ADC_GRP_NUM_CHANNELS),                       
+    0,                                                                     
+    ADC_SQR3_SQ1_N(ADC_CHANNEL_IN2) | ADC_SQR3_SQ2_N(ADC_CHANNEL_IN3),     
+    0,                                                                     
+    0                                                                      
 };
 
 static PWMConfig pwmcfg_heater = {
@@ -124,21 +121,22 @@ static PWMConfig pwmcfg_pump = {
 
 enum class HeaterState { Preheat, WarmupRamp, ClosedLoop, Stopped };
 
-// Pile sécurisée à 2Ko pour éviter tout dépassement
 static THD_WORKING_AREA(waWidebandThread, 2048);
 static THD_FUNCTION(WidebandThread, arg) {
     (void)arg;
     chRegSetThreadName("WBO Controller");
     
-    // Délai de sécurité pour laisser l'USB et le système s'initialiser totalement
     chThdSleepMilliseconds(3000);
 
-    // Initialisation des périphériques ADC et PWM
-    adcStart(&ADCD3, NULL);
-    pwmStart(&PWMD12, &pwmcfg_heater);
-    pwmStart(&PWMD8, &pwmcfg_pump);
-
-    adcStartConversion(&ADCD3, &adcgrpcfg, samples, ADC_GRP_BUF_DEPTH);
+    // =========================================================================
+    // TEST D'ISOLATION MATERIELLE EXTREME :
+    // On met en commentaire les démarrages ADC et PWM.
+    // Si la carte ne plante plus avec ce code, le conflit vient d'ici !
+    // =========================================================================
+    // adcStart(&ADCD3, NULL);
+    // pwmStart(&PWMD12, &pwmcfg_heater);
+    // pwmStart(&PWMD8, &pwmcfg_pump);
+    // adcStartConversion(&ADCD3, &adcgrpcfg, samples, ADC_GRP_BUF_DEPTH);
 
     HeaterState heaterState = HeaterState::Preheat;
     systime_t stateStartTime = chVTGetSystemTime();
@@ -202,14 +200,15 @@ static THD_FUNCTION(WidebandThread, arg) {
         }
 
         if (targetHeaterVoltage > 12.0f) targetHeaterVoltage = 12.0f;
-        if (targetHeaterVoltage < 0.0f)  targetHeaterVoltage = 0.0f; // Corrigé ici
+        if (targetHeaterVoltage < 0.0f)  targetHeaterVoltage = 0.0f;
 
         float voltageRatio = (vBatt < 1.0f) ? 0.0f : (targetHeaterVoltage / vBatt);
         float dutyFraction = voltageRatio * voltageRatio;
         if (dutyFraction > 1.0f) dutyFraction = 1.0f;
         if (vBatt >= 23.0f) dutyFraction = 0.0f; 
 
-        pwmEnableChannel(&PWMD12, 0, (pwmcnt_t)(dutyFraction * 1000.0f));
+        // Idem pour les écritures matérielles PWM
+        // pwmEnableChannel(&PWMD12, 0, (pwmcnt_t)(dutyFraction * 1000.0f));
 
         if (heaterState == HeaterState::ClosedLoop) {
             float nernstErr = nernstDc - NERNST_TARGET;
@@ -217,14 +216,14 @@ static THD_FUNCTION(WidebandThread, arg) {
             if (pumpDuty > 950.0f) pumpDuty = 950.0f;
             if (pumpDuty < 50.0f)  pumpDuty = 50.0f;
             
-            pwmEnableChannel(&PWMD8, 2, (pwmcnt_t)pumpDuty);
+            // pwmEnableChannel(&PWMD8, 2, (pwmcnt_t)pumpDuty);
 
             float ratio = -1000.0f / (PUMP_CURRENT_SENSE_GAIN * LSU_SENSE_R);
             currentLambda = CalculateLambda(pumpCurrentSenseVoltage * ratio);
             
             Sensor::setMockValue(SensorType::Lambda1, currentLambda);
         } else {
-            pwmEnableChannel(&PWMD8, 2, 500); 
+            // pwmEnableChannel(&PWMD8, 2, 500); 
             currentLambda = 1.0f; 
         }
 
@@ -234,10 +233,8 @@ static THD_FUNCTION(WidebandThread, arg) {
 
 void initWidebandDriver(void) {
     palSetPadMode(GPIOC, 9, PAL_MODE_OUTPUT_PUSHPULL);   
-    // PA2 et PA3 commentés pour éviter tout conflit matériel au boot
-    // palSetPadMode(GPIOA, 2, PAL_MODE_INPUT_ANALOG);      
-    // palSetPadMode(GPIOA, 3, PAL_MODE_INPUT_ANALOG);      
-
+    palSetPadMode(GPIOA, 2, PAL_MODE_INPUT_ANALOG);      
+    palSetPadMode(GPIOA, 3, PAL_MODE_INPUT_ANALOG);      
     palSetPadMode(GPIOB, 14, PAL_MODE_ALTERNATE(9));    
     palSetPadMode(GPIOC, 8, PAL_MODE_ALTERNATE(3));     
 
