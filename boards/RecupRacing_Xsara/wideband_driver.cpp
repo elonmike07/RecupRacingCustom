@@ -76,6 +76,7 @@ static void adccallback(ADCDriver *adcp) {
     r_3 = r_2; r_2 = r_1;
 }
 
+// Initialisation complète avec tous les champs requis (sqr2 et sqr3 inclus)
 static const ADCConversionGroup adcgrpcfg = {
     true,
     (uint16_t)ADC_GRP_NUM_CHANNELS,
@@ -85,25 +86,27 @@ static const ADCConversionGroup adcgrpcfg = {
     ADC_CR2_SWSTART,
     0,
     ADC_SMPR2_SMP_AN2(ADC_SAMPLE_56) | ADC_SMPR2_SMP_AN3(ADC_SAMPLE_56),
-    (uint16_t)ADC_SQR1_NUM_CH(ADC_GRP_NUM_CHANNELS), // Cast explicite anti-narrowing
-    0,
-    ADC_SQR3_SQ1_N(ADC_CHANNEL_IN2) | ADC_SQR3_SQ2_N(ADC_CHANNEL_IN3) // PA2 (IN2) & PA3 (IN3)
+    (uint16_t)ADC_SQR1_NUM_CH(ADC_GRP_NUM_CHANNELS),
+    0,                                    // sqr2
+    ADC_SQR3_SQ1_N(ADC_CHANNEL_IN2) | ADC_SQR3_SQ2_N(ADC_CHANNEL_IN3) // sqr3 (PA2 & PA3)
 };
 
-// Configuration TIM12 (PWMD12) pour le chauffage (PB14 - TIM12_CH1) avec initialisation complète des champs dier/cr2
+// Configuration PWMD12 (TIM12) pour le chauffage (PB14 - TIM12_CH1)
 static PWMConfig pwmcfg_heater = {
     100000,                               // frequency (100 Hz)
     1000,                                 // period
     NULL,                                 // callback
     {
         {PWM_OUTPUT_ACTIVE_HIGH, NULL},   // CH1 (PB14 WBO HEAT)
-        {PWM_OUTPUT_DISABLED, NULL}       // CH2
+        {PWM_OUTPUT_DISABLED, NULL},      // CH2
+        {PWM_OUTPUT_DISABLED, NULL},      // CH3
+        {PWM_OUTPUT_DISABLED, NULL}       // CH4
     },
     0,                                    // dier
     0                                     // cr2
 };
 
-// Configuration TIM8 (PWMD8) pour la pompe (PC8 - TIM8_CH3) avec initialisation complète
+// Configuration PWMD8 (TIM8) pour la pompe (PC8 - TIM8_CH3)
 static PWMConfig pwmcfg_pump = {
     10000000,                             // frequency (10 MHz)
     1000,                                 // period
@@ -205,7 +208,7 @@ static THD_FUNCTION(WidebandThread, arg) {
             float currentLambda = CalculateLambda(pumpCurrentSenseVoltage * ratio);
             
             // Assignation de la valeur Lambda via l'API rusEFI standard
-            Sensor::setSensor(SensorType::Lambda1, currentLambda);
+            Sensor::set(SensorType::Lambda1, currentLambda);
         } else {
             pwmEnableChannel(&PWMD8, 2, 500); 
         }
