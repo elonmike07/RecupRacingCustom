@@ -1,8 +1,6 @@
 #include "pch.h"
 #include "hal.h"
 
-// Le bootloader désactive les pilotes ADC et PWM dans son halconf.h.
-// On compile tout le driver Wideband uniquement si ces HAL sont activés (Firmware Principal).
 #if (defined(HAL_USE_ADC) && HAL_USE_ADC == TRUE) && (defined(HAL_USE_PWM) && HAL_USE_PWM == TRUE)
 
 #include "wideband_driver.h"
@@ -131,16 +129,16 @@ static THD_FUNCTION(WidebandThread, arg) {
     chThdSleepMilliseconds(3000);
 
     // =========================================================================
-    // ASTUCE POUR LE COMPILATEUR (-Werror=unused-variable)
+    // ASTUCE COMPILATEUR (-Werror=unused-variable)
     // =========================================================================
-    (void)pwmcfg_heater;
     (void)pwmcfg_pump;
 
     // =========================================================================
-    // TEST 1 : ON REACTIVE UNIQUEMENT L'ADC3
+    // TEST 2 : ON REACTIVE ADC3 + PWM12 (Chauffage)
+    // PWM8 (Pompe) reste désactivé.
     // =========================================================================
     adcStart(&ADCD3, NULL);
-    // pwmStart(&PWMD12, &pwmcfg_heater);
+    pwmStart(&PWMD12, &pwmcfg_heater);
     // pwmStart(&PWMD8, &pwmcfg_pump);
     adcStartConversion(&ADCD3, &adcgrpcfg, samples, ADC_GRP_BUF_DEPTH);
 
@@ -213,7 +211,8 @@ static THD_FUNCTION(WidebandThread, arg) {
         if (dutyFraction > 1.0f) dutyFraction = 1.0f;
         if (vBatt >= 23.0f) dutyFraction = 0.0f; 
 
-        // pwmEnableChannel(&PWMD12, 0, (pwmcnt_t)(dutyFraction * 1000.0f));
+        // RACTIVATION DES COMMANDES PWM DU CHAUFFAGE (TIM12)
+        pwmEnableChannel(&PWMD12, 0, (pwmcnt_t)(dutyFraction * 1000.0f));
 
         if (heaterState == HeaterState::ClosedLoop) {
             float nernstErr = nernstDc - NERNST_TARGET;
