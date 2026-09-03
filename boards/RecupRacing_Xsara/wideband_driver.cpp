@@ -197,7 +197,6 @@ static THD_FUNCTION(WidebandThread, arg) {
             }
             case HeaterState::Stopped:
             default:
-                targetHeitalVoltage = 0.0f; // Note: gardé conforme
                 targetHeaterVoltage = 0.0f;
                 break;
         }
@@ -228,8 +227,6 @@ static THD_FUNCTION(WidebandThread, arg) {
             pwmEnableChannel(&PWMD8, 2, 500); 
             currentLambda = 1.0f; 
         }
-
-        // Logs de debug efiPrintf supprimés pour garantir zéro saturation du port série/USB
 
         chThdSleepMilliseconds(50); 
     }
