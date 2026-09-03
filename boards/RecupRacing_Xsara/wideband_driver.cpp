@@ -106,10 +106,10 @@ static PWMConfig pwmcfg_heater = {
     .dier      = 0
 };
 
-// Configuration pour le Timer 3 (PWMD3) validée par l'OS (100kHz / période 10 = 10kHz)
+// Configuration pour le Timer 3 (PWMD3) corrigée : 1 MHz / période 100 = 10 kHz (stable sur APB1 à 84MHz)
 static PWMConfig pwmcfg_pump = {
-    .frequency = 100000,
-    .period    = 10,
+    .frequency = 1000000,
+    .period    = 100,
     .callback  = nullptr,
     .channels  = {
         {.mode = PWM_OUTPUT_DISABLED,    .callback = nullptr}, 
@@ -129,10 +129,9 @@ static THD_FUNCTION(WidebandThread, arg) {
     (void)arg;
     chRegSetThreadName("WBO Controller");
     
-    // Délai de sécurité optionnel (tu peux le laisser à 3000 ms maintenant que le plantage d'horloge est résolu)
     chThdSleepMilliseconds(3000);
 
-    // Initialisation globale avec PWMD3 sécurisé
+    // Initialisation globale
     adcStart(&ADCD3, NULL);
     pwmStart(&PWMD12, &pwmcfg_heater);
     pwmStart(&PWMD3, &pwmcfg_pump);
@@ -144,7 +143,7 @@ static THD_FUNCTION(WidebandThread, arg) {
     float rampVoltage = 7.0f;
     float integrator = 0.0f;
     float prevError = 0.0f;
-    float pumpDuty = 500.0f;
+    float pumpDuty = 50.0f; // Échelle 0-100 pour la période de 100
     float currentLambda = 1.0f; 
 
     while (true) {
@@ -212,20 +211,20 @@ static THD_FUNCTION(WidebandThread, arg) {
 
         if (heaterState == HeaterState::ClosedLoop) {
             float nernstErr = nernstDc - NERNST_TARGET;
-            pumpDuty += nernstErr * 25.0f;
-            if (pumpDuty > 950.0f) pumpDuty = 950.0f;
-            if (pumpDuty < 50.0f)  pumpDuty = 50.0f;
+            pumpDuty += nernstErr * 2.5f; // Ajusté pour l'échelle 0-100
+            if (pumpDuty > 95.0f) pumpDuty = 95.0f;
+            if (pumpDuty < 5.0f)  pumpDuty = 5.0f;
             
-            // PWM Pompe (TIM3) - Conversion de l'échelle 0-1000 vers la période 0-10
-            pwmEnableChannel(&PWMD3, 2, (pwmcnt_t)(pumpDuty / 100.0f));
+            // PWM Pompe (TIM3) - Échelle 0-100 pour la période de 100
+            pwmEnableChannel(&PWMD3, 2, (pwmcnt_t)pumpDuty);
 
             float ratio = -1000.0f / (PUMP_CURRENT_SENSE_GAIN * LSU_SENSE_R);
             currentLambda = CalculateLambda(pumpCurrentSenseVoltage * ratio);
             
             Sensor::setMockValue(SensorType::Lambda1, currentLambda);
         } else {
-            // PWM Pompe en mode attente (Duty à 50% -> valeur 5 pour une période de 10)
-            pwmEnableChannel(&PWMD3, 2, 5); 
+            // PWM Pompe en mode attente (Duty à 50% -> valeur 50 pour une période de 100)
+            pwmEnableChannel(&PWMD3, 2, 50); 
             currentLambda = 1.0f; 
         }
 
