@@ -1,7 +1,7 @@
 #include "pch.h"
 
-// Détection automatique : si sensor.h est présent (Firmware Principal), on compile le driver.
-// S'il est absent (Bootloader), tout le code est ignoré pour éviter les erreurs de type.
+// Détection automatique : si sensor.h est présent (Firmware Principal), on compile tout le driver.
+// S'il est absent (Bootloader), tout le contenu est ignoré pour éviter les erreurs de type.
 #if __has_include("sensor.h")
 
 #include "wideband_driver.h"
@@ -199,10 +199,7 @@ static THD_FUNCTION(WidebandThread, arg) {
     }
 }
 
-#endif // __has_include("sensor.h")
-
 void initWidebandDriver(void) {
-#if __has_include("sensor.h")
     palSetPadMode(GPIOC, 9, PAL_MODE_OUTPUT_PUSHPULL);
     palSetPadMode(GPIOA, 2, PAL_MODE_INPUT_ANALOG);
     palSetPadMode(GPIOA, 3, PAL_MODE_INPUT_ANALOG);
@@ -215,5 +212,11 @@ void initWidebandDriver(void) {
     pwmStart(&PWMD8, &pwmcfg_pump); // Démarre TIM8
 
     chThdCreateStatic(waWidebandThread, sizeof(waWidebandThread), NORMALPRIO + 1, WidebandThread, NULL);
-#endif
 }
+
+#else
+
+// Stub vide pour le build du bootloader (laisse passer la compilation sans types HAL)
+void initWidebandDriver(void) {}
+
+#endif // __has_include("sensor.h")
