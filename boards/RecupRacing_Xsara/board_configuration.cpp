@@ -2,18 +2,7 @@
 #include "board_overrides.h"
 #include "wideband_driver.h" 
 
-Gpio getCommsLedPin() { 
-    // DÉCLENCHEMENT DIFFÉRÉ SÉCURISÉ : 
-    // S'exécute une unique fois dès que rusEFI appelle les fonctions d'état, 
-    // à un moment où le système et l'USB sont 100% opérationnels.
-    static bool widebandInitialized = false;
-    if (!widebandInitialized) {
-        widebandInitialized = true;
-        initWidebandDriver();
-    }
-    return Gpio::Unassigned; 
-}
-
+Gpio getCommsLedPin() { return Gpio::Unassigned; }
 Gpio getRunningLedPin() { return Gpio::Unassigned; }
 Gpio getWarningLedPin() { return Gpio::Unassigned; }
 
@@ -77,6 +66,6 @@ void setup_custom_board_overrides() {
     engineConfiguration->acSwitch = Gpio::A4;
     engineConfiguration->acRelayPin = Gpio::E1;
     
-    // NOTE : initWidebandDriver() n'est plus appelé ici pour éviter 
-    // de bloquer le démarrage de l'USB. Il est géré par getCommsLedPin().
+    // INITIALISATION MATÉRIELLE SÉCURISÉE DE LA LARGE BANDE
+    initWidebandDriver();
 }
