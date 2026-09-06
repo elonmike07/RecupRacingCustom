@@ -105,25 +105,33 @@ static const ADCConversionGroup adcgrpcfg = {
     ADC_SQR3_SQ1_N(ADC_CHANNEL_IN2) | ADC_SQR3_SQ2_N(ADC_CHANNEL_IN3), 0, 0 
 };
 
+// CORRECTION DE COMPILATION (-Werror=missing-field-initializers)
 static PWMConfig pwmcfg_heater = {
     100000, 1000, nullptr,
-    { {.mode = PWM_OUTPUT_ACTIVE_HIGH, .callback = nullptr}, {0}, {0}, {0} }, 0, 0, 0
+    { 
+        {.mode = PWM_OUTPUT_ACTIVE_HIGH, .callback = nullptr}, 
+        {.mode = PWM_OUTPUT_DISABLED,    .callback = nullptr}, 
+        {.mode = PWM_OUTPUT_DISABLED,    .callback = nullptr}, 
+        {.mode = PWM_OUTPUT_DISABLED,    .callback = nullptr} 
+    }, 
+    0, 0, 0
 };
 
+// CORRECTION DE COMPILATION (-Werror=missing-field-initializers)
 static PWMConfig pwmcfg_pump = {
     1000000, 100, nullptr,
     { 
-      {0}, 
-      {0}, 
-      {.mode = PWM_OUTPUT_ACTIVE_HIGH, .callback = nullptr}, 
-      {.mode = PWM_OUTPUT_ACTIVE_HIGH, .callback = nullptr}  
+        {.mode = PWM_OUTPUT_DISABLED,    .callback = nullptr}, 
+        {.mode = PWM_OUTPUT_DISABLED,    .callback = nullptr}, 
+        {.mode = PWM_OUTPUT_ACTIVE_HIGH, .callback = nullptr}, 
+        {.mode = PWM_OUTPUT_ACTIVE_HIGH, .callback = nullptr}  
     },
     STM32_TIM_CR2_MMS(2), 0, 0
 };
 
 // ==========================================
 // THREAD 1 : CONTRÔLE DE LA POMPE (500 Hz)
-// Stack sécurisé à 1024 octets (corrigé)
+// Stack sécurisé à 1024 octets
 // ==========================================
 static THD_WORKING_AREA(waPumpThread, 1024);
 static THD_FUNCTION(PumpThread, arg) {
@@ -202,7 +210,7 @@ static THD_FUNCTION(WidebandThread, arg) {
 
         float vBatt = Sensor::get(SensorType::BatteryVoltage).value_or(13.5f);
         
-        // PROTECTION CRANKING NETTOYÉE (Seuil à 6.0V pour tolérer la chute du démarreur sans couper intempestivement)
+        // PROTECTION CRANKING (Seuil à 6.0V pour tolérer la chute du démarreur sans couper intempestivement)
         if (vBatt < 6.0f) {
             heaterState = HeaterState::Stopped;
         }
