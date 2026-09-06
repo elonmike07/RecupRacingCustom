@@ -7,6 +7,13 @@ Gpio getRunningLedPin() { return Gpio::Unassigned; }
 Gpio getWarningLedPin() { return Gpio::Unassigned; }
 
 void setup_custom_board_overrides() {
+    // === SÉCURITÉ MATÉRIELLE CRITIQUE (À FAIRE EN TOUT PREMIER) ===
+    // Force GLOBAL_ENABLE (PE8) à l'état HAUT pour bloquer le buffer U14
+    // avant que le reste du système ne s'initialise.
+    palSetPadMode(GPIOE, 8, PAL_MODE_OUTPUT_PUSHPULL);
+    palSetPad(GPIOE, 8);
+    // ==============================================================
+
     // ==========================================
     // CAPTEURS ANALOGIQUES (CORRIGÉS POUR STM32F4)
     // ==========================================
@@ -68,4 +75,8 @@ void setup_custom_board_overrides() {
     
     // INITIALISATION MATÉRIELLE SÉCURISÉE DE LA LARGE BANDE
     initWidebandDriver();
+    // === ACTIVATION FINALE DES BUFFERS MATÉRIELS ===
+    // Une fois le setup terminé, on passe GLOBAL_ENABLE (PE8) à l'état BAS 
+    // pour autoriser le flux des signaux sur U8, U14 et U19 (~OE actif bas).
+    palClearPad(GPIOE, 8);
 }
