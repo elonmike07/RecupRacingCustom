@@ -267,7 +267,8 @@ static THD_FUNCTION(WidebandThread, arg) {
         float rpm = rpmOpt.value_or(0.0f);
         float clt = cltOpt.value_or(20.0f); 
         
-        if ((!vBattOpt.has_value() || vBatt < 8.5f || rpm < 350.0f) && heaterState != HeaterState::Fault) {
+        // CORRECTION APPLIQUÉE : Utilisation de l'opérateur booléen direct pour expected<T>
+        if ((!vBattOpt || vBatt < 8.5f || rpm < 350.0f) && heaterState != HeaterState::Fault) {
             heaterState = HeaterState::Stopped;
             batteryStableTimerSec = 0.0f; 
         }
@@ -407,7 +408,8 @@ void initWidebandDriver(void) {
     pwmStart(&PWMD12, &pwmcfg_heater);
     pwmStart(&PWMD3, &pwmcfg_pump);
     
-    PWMD3.tim->CR1 |= STM32_TIM_CR1_CMS_0 | STM32_TIM_CR1_CMS_1;
+    // CORRECTION APPLIQUÉE : Utilisation du masque global STM32_TIM_CR1_CMS
+    PWMD3.tim->CR1 |= STM32_TIM_CR1_CMS;
     
     // SYNCHRONISATION PARFAITE DE L'ADC (LA CLÉ DE LA MESURE ESR)
     // CH1 (Index 0) sert uniquement de trigger pour ADC3 (EXTSEL=7U). On déclenche à 80% du cycle.
