@@ -83,9 +83,9 @@ extern "C" void wboHardwareEmergencyStop(void) {
     }
 
     // 2. Verrouillage matériel des buffers via GLOBAL_ENABLE (PE8)
-    // Utilisation explicite de .u32 pour l'écriture atomique sur le registre BSRR
+    // Utilisation d'un cast direct 32 bits pour contourner l'encapsulation de l'union ChibiOS
     if (GPIOE) {
-        GPIOE->BSRR.u32 = (1U << 8); 
+        *(uint32_t*)&GPIOE->BSRR = (1U << 8); 
     }
 }
 
