@@ -14,16 +14,17 @@
 #include "sensor.h"
 
 #define ADC_GRP_NUM_CHANNELS    2
-#define ADC_GRP_BUF_DEPTH       4
+#define ADC_GRP_BUF_DEPTH       1 
 
 static adcsample_t samples[ADC_GRP_NUM_CHANNELS * ADC_GRP_BUF_DEPTH];
 
 // ==========================================
 // CONSTANTES ET TABLES DE CALIBRATION
 // ==========================================
-static constexpr float ESR_SENSE_ALPHA = 0.002f;
-static constexpr float PUMP_FILTER_ALPHA = 0.02f;
+static constexpr float ESR_SENSE_ALPHA = 0.0005f;  
+static constexpr float PUMP_FILTER_ALPHA = 0.005f; 
 static constexpr float DERIVATIVE_ALPHA = 0.1f; 
+static constexpr float VBATT_FILTER_ALPHA = 0.05f; 
 static constexpr float PUMP_CURRENT_SENSE_GAIN = 10.0f;
 static constexpr float LSU_SENSE_R = 61.9f;
 static constexpr float NERNST_TARGET = 0.45f;
@@ -41,6 +42,8 @@ static const float lsu49TempValues[] = {1030, 972, 888, 840, 806, 780, 761, 744,
 // ==========================================
 // VARIABLES GLOBALES PARTAGÉES
 // ==========================================
+volatile bool wboPwmInitialized = false; 
+
 static volatile float nernstDc = 0.45f;
 static volatile float nernstAc = 0.0f;
 static volatile float pumpCurrentSenseVoltage = 0.0f;
@@ -64,18 +67,18 @@ static inline float f_abs(float x) { return x > 0.0f ? x : -x; }
 extern "C" void wboHardwareEmergencyStop(void) {
     eStopTriggered = true;
 
-    if (TIM12) {
+    if ((RCC->APB1ENR & RCC_APB1ENR_TIM12EN) && TIM12) {
         TIM12->CCER = 0; 
         TIM12->CR1 &= ~TIM_CR1_CEN; 
     }
 
-    if (TIM3) {
+    if ((RCC->APB1ENR & RCC_APB1ENR_TIM3EN) && TIM3) {
         TIM3->CCER = 0;
         TIM3->CR1 &= ~TIM_CR1_CEN;
     }
 
-    if (GPIOE) {
-        *(volatile uint32_t*)&GPIOE->BSRR = (1U << 8); 
+    if ((RCC->AHB1ENR & RCC_AHB1ENR_GPIOEEN) && GPIOE) {
+        *(volatile uint32_t*)&GPIOE->BSRR = (1U << 8); // Force PE8 HAUT
     }
 }
 
@@ -93,19 +96,13 @@ static float CalculateLambda(float pumpCurrentmA) {
 }
 
 // ==========================================
-// LECTURE ADC SYNCHRONISÉE
+// LECTURE ADC 100% MATÉRIELLE (Zéro Jitter Nernst)
 // ==========================================
 static void adccallback(ADCDriver *adcp) {
     (void)adcp;
 
-    uint32_t sumNernst = 0, sumPump = 0;
-    for (size_t i = 0; i < ADC_GRP_BUF_DEPTH; i++) {
-        sumNernst += samples[i * ADC_GRP_NUM_CHANNELS + 0];
-        sumPump   += samples[i * ADC_GRP_NUM_CHANNELS + 1];
-    }
-
-    float absoluteNernst = ((float)sumNernst / ADC_GRP_BUF_DEPTH) * (3.3f / 4095.0f);
-    float absolutePump   = ((float)sumPump / ADC_GRP_BUF_DEPTH) * (3.3f / 4095.0f);
+    float absoluteNernst = (float)samples[0] * (3.3f / 4095.0f);
+    float absolutePump   = (float)samples[1] * (3.3f / 4095.0f);
 
     r_1 = absoluteNernst - VIRTUAL_GROUND; 
     float pumpV = absolutePump - VIRTUAL_GROUND; 
@@ -123,11 +120,13 @@ static void adccallback(ADCDriver *adcp) {
     pumpCurrentSenseVoltage = pumpVoltFiltered;
     chSysUnlockFromISR();
 
-    r_3 = r_2; r_2 = r_1;
+    r_3 = r_2; 
+    r_2 = r_1;
+    // SUPPRESSION TOTALE du palTogglePad ici : Le hardware pur gère le Nernst AC via TIM3_CH4.
 }
 
 static const ADCConversionGroup adcgrpcfg = {
-    true, (uint16_t)ADC_GRP_NUM_CHANNELS, adccallback, nullptr, 0, 
+    false, (uint16_t)ADC_GRP_NUM_CHANNELS, adccallback, nullptr, 0, 
     ADC_CR2_EXTEN_RISING | (7U << ADC_CR2_EXTSEL_Pos), 0, 
     ADC_SMPR2_SMP_AN2(ADC_SAMPLE_480) | ADC_SMPR2_SMP_AN3(ADC_SAMPLE_480),   
     (uint16_t)ADC_SQR1_NUM_CH(ADC_GRP_NUM_CHANNELS), 0, 
@@ -145,13 +144,14 @@ static PWMConfig pwmcfg_heater = {
     0, 0, 0 
 };
 
+// Configuration TIM3 à 2.5 kHz avec CH4 configuré en mode TOGGLE matériel
 static PWMConfig pwmcfg_pump = { 
-    1000000, 100, nullptr, 
+    250000, 100, nullptr, 
     {
-        {.mode = PWM_OUTPUT_ACTIVE_HIGH, .callback = nullptr},
-        {.mode = PWM_OUTPUT_DISABLED, .callback = nullptr},
-        {.mode = PWM_OUTPUT_ACTIVE_HIGH, .callback = nullptr},
-        {.mode = PWM_OUTPUT_ACTIVE_HIGH, .callback = nullptr}
+        {.mode = PWM_OUTPUT_ACTIVE_HIGH, .callback = nullptr}, // CH1 (0): Trigger ADC (à 99)
+        {.mode = PWM_OUTPUT_DISABLED, .callback = nullptr},    // CH2 (1): Inutilisé
+        {.mode = PWM_OUTPUT_ACTIVE_HIGH, .callback = nullptr}, // CH3 (2): Pompe (PC8)
+        {.mode = PWM_OUTPUT_PARALLEL_LOW, .callback = nullptr} // CH4 (3): Nernst AC (PC9) - Toggle Hardware pur !
     }, 
     0, 0, 0 
 };
@@ -189,7 +189,7 @@ static THD_FUNCTION(PumpThread, arg) {
             
             pumpDuty = 50.0f + (nernstErr * kP_pump) + pumpIntegrator;
             
-            if (pumpDuty > 95.0f) pumpDuty = 95.0f;
+            if (pumpDuty > 95.0f) pumpDuty = 95.0f; 
             if (pumpDuty < 5.0f)  pumpDuty = 5.0f;
             
             if (!eStopTriggered) {
@@ -202,11 +202,9 @@ static THD_FUNCTION(PumpThread, arg) {
             
         } else {
             pumpIntegrator = 0.0f;
-            
             if (!eStopTriggered && TIM3) {
                 TIM3->CCER &= ~TIM_CCER_CC3E; 
             }
-            
             currentLambda = (localState == HeaterState::Fault) ? 0.0f : 1.0f; 
             Sensor::setMockValue(SensorType::Lambda1, currentLambda); 
         }
@@ -222,12 +220,16 @@ static THD_FUNCTION(WidebandThread, arg) {
     (void)arg;
     chRegSetThreadName("WBO Heater");
     
+    pwmEnableChannel(&PWMD12, 0, 0);
+    wboPwmInitialized = true;
+
     systime_t stateStartTime = chVTGetSystemTime();
     
     float rampVoltage = 7.0f;
     float integrator = 0.0f;
     float prevError = 0.0f;
     float filteredDerivative = 0.0f;
+    float filteredVbatt = 12.0f; 
     
     uint8_t overheatCounter = 0;
     uint8_t underheatCounter = 0;
@@ -267,11 +269,17 @@ static THD_FUNCTION(WidebandThread, arg) {
         auto rpmOpt = Sensor::get(SensorType::Rpm);
         auto cltOpt = Sensor::get(SensorType::Clt);
 
-        float vBatt = vBattOpt.value_or(0.0f);
+        float rawVbatt = vBattOpt.value_or(0.0f);
         float rpm = rpmOpt.value_or(0.0f);
         float clt = cltOpt.value_or(20.0f); 
         
-        if ((!vBattOpt || vBatt < 8.5f || rpm < 350.0f) && heaterState != HeaterState::Fault) {
+        if (rawVbatt > 5.0f) {
+            filteredVbatt = (1.0f - VBATT_FILTER_ALPHA) * filteredVbatt + (VBATT_FILTER_ALPHA * rawVbatt);
+        } else {
+            filteredVbatt = rawVbatt; 
+        }
+        
+        if ((!vBattOpt || filteredVbatt < 8.5f || rpm < 350.0f) && heaterState != HeaterState::Fault) {
             heaterState = HeaterState::Stopped;
             batteryStableTimerSec = 0.0f; 
         }
@@ -349,7 +357,7 @@ static THD_FUNCTION(WidebandThread, arg) {
             case HeaterState::Stopped:
             default:
                 targetHeaterVoltage = 0.0f;
-                if (vBatt >= 12.2f && rpm >= 450.0f) {
+                if (filteredVbatt >= 12.2f && rpm >= 450.0f) {
                     batteryStableTimerSec += 0.01f; 
                     if (batteryStableTimerSec >= 4.0f) {
                         heaterState = HeaterState::Preheat;
@@ -365,10 +373,10 @@ static THD_FUNCTION(WidebandThread, arg) {
         if (targetHeaterVoltage > 12.0f) targetHeaterVoltage = 12.0f;
         if (targetHeaterVoltage < 0.0f)  targetHeaterVoltage = 0.0f;
 
-        float voltageRatio = (vBatt < 1.0f) ? 0.0f : (targetHeaterVoltage / vBatt);
+        float voltageRatio = (filteredVbatt < 1.0f) ? 0.0f : (targetHeaterVoltage / filteredVbatt);
         float dutyFraction = voltageRatio * voltageRatio;
         if (dutyFraction > 1.0f) dutyFraction = 1.0f;
-        if (vBatt >= 23.0f || heaterState == HeaterState::Fault) dutyFraction = 0.0f; 
+        if (filteredVbatt >= 23.0f || heaterState == HeaterState::Fault) dutyFraction = 0.0f; 
 
         if (!eStopTriggered) {
             pwmEnableChannel(&PWMD12, 0, (pwmcnt_t)(dutyFraction * 1000.0f));
@@ -387,7 +395,7 @@ static THD_FUNCTION(WboWatchdogThread, arg) {
     uint32_t lastCounter = 0;
 
     while (true) {
-        chThdSleepMilliseconds(500); 
+        chThdSleepMilliseconds(50); 
 
         if (heaterThreadAliveCounter == lastCounter) {
             wboHardwareEmergencyStop(); 
@@ -398,22 +406,22 @@ static THD_FUNCTION(WboWatchdogThread, arg) {
 }
 
 void initWidebandDriver(void) {
-    palSetPadMode(GPIOC, 9, PAL_MODE_ALTERNATE(2)); // NERNST AC (TIM3_CH4)
+    // Configuration des broches en mode Alternate Function (AF2 pour TIM3 sur PC8 et PC9)
+    palSetPadMode(GPIOC, 9, PAL_MODE_ALTERNATE(2)); // Nernst AC (TIM3_CH4 - Toggle Matériel Pur)
     palSetPadMode(GPIOC, 8, PAL_MODE_ALTERNATE(2)); // PUMP PWM (TIM3_CH3)
     palSetPadMode(GPIOA, 2, PAL_MODE_INPUT_ANALOG);      
     palSetPadMode(GPIOA, 3, PAL_MODE_INPUT_ANALOG);      
-    palSetPadMode(GPIOB, 14, PAL_MODE_ALTERNATE(9));    
+    palSetPadMode(GPIOB, 14, PAL_MODE_ALTERNATE(9));   // HEATER PWM (TIM12)
 
     adcStart(&ADCD3, NULL);
     
     pwmStart(&PWMD12, &pwmcfg_heater);
     pwmStart(&PWMD3, &pwmcfg_pump);
     
-    PWMD3.tim->CR1 |= TIM_CR1_CMS;
-    
-    pwmEnableChannel(&PWMD3, 0, 80); 
-    pwmEnableChannel(&PWMD3, 3, 50); 
-    pwmEnableChannel(&PWMD3, 2, 50); 
+    // Activation matérielle :
+    pwmEnableChannel(&PWMD3, 0, 99);  // CH1 : Déclenchement ADC à 99% (Zone Morte Électrique)
+    pwmEnableChannel(&PWMD3, 2, 50);  // CH3 : PWM Pompe de départ
+    pwmEnableChannel(&PWMD3, 3, 50);  // CH4 : Active la génération automatique du signal Nernst AC par le Timer !
 
     adcStartConversion(&ADCD3, &adcgrpcfg, samples, ADC_GRP_BUF_DEPTH);
 

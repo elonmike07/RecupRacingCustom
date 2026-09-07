@@ -80,7 +80,20 @@ void boardInitLate() {
     // Initialisation matérielle et lancement des Threads de la large bande
     initWidebandDriver();
     
+    // === MÉCANISME DE SOFT-START (ATTENTE ACTIVE) ===
+    // On attend que le thread de chauffage ait explicitement mis le PWM à 0
+    int timeoutMs = 500;
+    while (!wboPwmInitialized && timeoutMs > 0) {
+        chThdSleepMilliseconds(10);
+        timeoutMs -= 10;
+    }
+    
     // === ACTIVATION FINALE DES BUFFERS MATÉRIELS ===
-    // Une fois le système WBO prêt et sécurisé, on autorise le flux des signaux
-    palClearPad(GPIOE, 8);
+    if (wboPwmInitialized) {
+        // Le système WBO est prêt et sécurisé, on autorise le flux
+        palClearPad(GPIOE, 8);
+    } else {
+        // FAILSAFE : Si le timeout est atteint (plantage du thread WBO au boot),
+        // PE8 reste à l'état HAUT et le buffer matériel reste verrouillé.
+    }
 }
