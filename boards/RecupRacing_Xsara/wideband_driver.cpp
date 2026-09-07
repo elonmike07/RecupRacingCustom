@@ -66,23 +66,18 @@ static inline float f_abs(float x) { return x > 0.0f ? x : -x; }
 // ARRÊT MATÉRIEL D'URGENCE (SÉCURITÉ PARANO BARE-METAL)
 // ==========================================
 extern "C" void wboHardwareEmergencyStop(void) {
-    // 0. Verrouillage logiciel : Empêche les threads de réactiver les PWM via la HAL
     eStopTriggered = true;
 
-    // 1. Désactivation pure et dure des Timers via les registres CMSIS
-    // TIM12 (Chauffage) : Désactivation des sorties et arrêt du compteur
     if (TIM12) {
         TIM12->CCER = 0; 
         TIM12->CR1 &= ~TIM_CR1_CEN; 
     }
 
-    // TIM3 (Pompe et Nernst AC) : Désactivation des sorties et arrêt du compteur
     if (TIM3) {
         TIM3->CCER = 0;
         TIM3->CR1 &= ~TIM_CR1_CEN;
     }
 
-    // 2. Verrouillage matériel des buffers via GLOBAL_ENABLE (PE8)
     if (GPIOE) {
         *(uint32_t*)&GPIOE->BSRR = (1U << 8); 
     }
@@ -113,14 +108,12 @@ static void adccallback(ADCDriver *adcp) {
         sumPump   += samples[i * ADC_GRP_NUM_CHANNELS + 1];
     }
 
-    // Calcul statique (Assumant VDDA = 3.3V)
     float absoluteNernst = ((float)sumNernst / ADC_GRP_BUF_DEPTH) * (3.3f / 4095.0f);
     float absolutePump   = ((float)sumPump / ADC_GRP_BUF_DEPTH) * (3.3f / 4095.0f);
 
     r_1 = absoluteNernst - VIRTUAL_GROUND; 
     float pumpV = absolutePump - VIRTUAL_GROUND; 
 
-    // Calcul de l'ESR par soustraction de phase (Annulation offset DC)
     float r2_opposite_phase = (r_1 + r_3) * 0.5f;
     float nernstAcLocal = f_abs(r2_opposite_phase - r_2);
     float nernstDcLocal = (r2_opposite_phase + r_2) * 0.5f;
@@ -137,7 +130,7 @@ static void adccallback(ADCDriver *adcp) {
     r_3 = r_2; r_2 = r_1;
 }
 
-// Configuration ADC3 déclenchée par TIM3_CH1 (EXTSEL = 7U) - Échantillonnage maximisé à 480 cycles
+// Configuration ADC3
 static const ADCConversionGroup adcgrpcfg = {
     true, (uint16_t)ADC_GRP_NUM_CHANNELS, adccallback, nullptr, 0, 
     ADC_CR2_EXTEN_RISING | (7U << ADC_CR2_EXTSEL_Pos), 0, 
@@ -146,7 +139,6 @@ static const ADCConversionGroup adcgrpcfg = {
     ADC_SQR3_SQ1_N(ADC_CHANNEL_IN2) | ADC_SQR3_SQ2_N(ADC_CHANNEL_IN3), 0, 0 
 };
 
-// Initialisation complète des configurations PWM pour satisfaire -Werror=missing-field-initializers
 static PWMConfig pwmcfg_heater = { 
     100000, 1000, nullptr, 
     {
@@ -206,7 +198,7 @@ static THD_FUNCTION(PumpThread, arg) {
             if (pumpDuty < 5.0f)  pumpDuty = 5.0f;
             
             if (!eStopTriggered) {
-                pwmEnableChannel(&PWMD3, 2, (pwmcnt_t)pumpDuty); // TIM3_CH3 (Pompe)
+                pwmEnableChannel(&PWMD3, 2, (pwmcnt_t)pumpDuty); 
             }
 
             float ratio = -1000.0f / (PUMP_CURRENT_SENSE_GAIN * LSU_SENSE_R);
@@ -217,7 +209,7 @@ static THD_FUNCTION(PumpThread, arg) {
             pumpIntegrator = 0.0f;
             
             if (!eStopTriggered && TIM3) {
-                TIM3->CCER &= ~TIM_CCER_CC3E; // Désactive TIM3_CH3
+                TIM3->CCER &= ~TIM_CCER_CC3E; 
             }
             
             currentLambda = (localState == HeaterState::Fault) ? 0.0f : 1.0f; 
@@ -422,19 +414,19 @@ void initWidebandDriver(void) {
     pwmStart(&PWMD12, &pwmcfg_heater);
     pwmStart(&PWMD3, &pwmcfg_pump);
     
-    // Utilisation de la macro CMSIS standard pour le mode centré
     PWMD3.tim->CR1 |= TIM_CR1_CMS;
     
     pwmEnableChannel(&PWMD3, 0, 80); 
     pwmEnableChannel(&PWMD3, 3, 50); 
     pwmEnableChannel(&PWMD3, 2, 50); 
 
-    // --- ISOLATION DE L'ADC : Conversion désactivée pour test USB ---
-    // adcStartConversion(&ADCD3, &adcgrpcfg, samples, ADC_GRP_BUF_DEPTH);
+    // RÉACTIVÉ : L'ADC tourne normalement
+    adcStartConversion(&ADCD3, &adcgrpcfg, samples, ADC_GRP_BUF_DEPTH);
 
-    chThdCreateStatic(waPumpThread, sizeof(waPumpThread), NORMALPRIO + 4, PumpThread, NULL);
-    chThdCreateStatic(waWidebandThread, sizeof(waWidebandThread), NORMALPRIO + 3, WidebandThread, NULL);
-    chThdCreateStatic(waWboWatchdogThread, sizeof(waWboWatchdogThread), NORMALPRIO + 5, WboWatchdogThread, NULL);
+    // DÉSACTIVÉ : On isole les threads pour vérifier si l'USB refonctionne
+    // chThdCreateStatic(waPumpThread, sizeof(waPumpThread), NORMALPRIO + 4, PumpThread, NULL);
+    // chThdCreateStatic(waWidebandThread, sizeof(waWidebandThread), NORMALPRIO + 3, WidebandThread, NULL);
+    // chThdCreateStatic(waWboWatchdogThread, sizeof(waWboWatchdogThread), NORMALPRIO + 5, WboWatchdogThread, NULL);
 }
 
 #else
