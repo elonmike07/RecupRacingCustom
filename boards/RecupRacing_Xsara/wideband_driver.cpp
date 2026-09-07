@@ -151,7 +151,7 @@ static PWMConfig pwmcfg_pump = {
         {.mode = PWM_OUTPUT_ACTIVE_HIGH, .callback = nullptr}, // CH1 (0): Trigger ADC (à 99)
         {.mode = PWM_OUTPUT_DISABLED, .callback = nullptr},    // CH2 (1): Inutilisé
         {.mode = PWM_OUTPUT_ACTIVE_HIGH, .callback = nullptr}, // CH3 (2): Pompe (PC8)
-        {.mode = PWM_OUTPUT_PARALLEL_LOW, .callback = nullptr} // CH4 (3): Nernst AC (PC9) - Toggle Hardware pur !
+        {.mode = PWM_OUTPUT_ACTIVE_LOW, .callback = nullptr} // CH4 (3): Nernst AC (PC9) - Toggle Hardware pur !
     }, 
     0, 0, 0 
 };
