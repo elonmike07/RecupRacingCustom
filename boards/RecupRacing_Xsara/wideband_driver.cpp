@@ -83,9 +83,9 @@ extern "C" void wboHardwareEmergencyStop(void) {
     }
 
     // 2. Verrouillage matériel des buffers via GLOBAL_ENABLE (PE8)
-    // Utilisation du registre BSRR pour une écriture atomique et inconditionnelle à l'état HAUT
+    // Utilisation explicite de .u32 pour l'écriture atomique sur le registre BSRR
     if (GPIOE) {
-        GPIOE->BSRR = (1U << 8); 
+        GPIOE->BSRR.u32 = (1U << 8); 
     }
 }
 
@@ -147,8 +147,28 @@ static const ADCConversionGroup adcgrpcfg = {
     ADC_SQR3_SQ1_N(ADC_CHANNEL_IN2) | ADC_SQR3_SQ2_N(ADC_CHANNEL_IN3), 0, 0 
 };
 
-static PWMConfig pwmcfg_heater = { 100000, 1000, nullptr, { {.mode = PWM_OUTPUT_ACTIVE_HIGH, .callback = nullptr}, {0}, {0}, {0} }, 0, 0, 0 };
-static PWMConfig pwmcfg_pump = { 1000000, 100, nullptr, { {.mode = PWM_OUTPUT_ACTIVE_HIGH, .callback = nullptr}, {0}, {.mode = PWM_OUTPUT_ACTIVE_HIGH, .callback = nullptr}, {.mode = PWM_OUTPUT_ACTIVE_HIGH, .callback = nullptr} }, 0, 0, 0 };
+// Initialisation complète des configurations PWM pour satisfaire -Werror=missing-field-initializers
+static PWMConfig pwmcfg_heater = { 
+    100000, 1000, nullptr, 
+    {
+        {.mode = PWM_OUTPUT_ACTIVE_HIGH, .callback = nullptr},
+        {.mode = PWM_OUTPUT_DISABLED, .callback = nullptr},
+        {.mode = PWM_OUTPUT_DISABLED, .callback = nullptr},
+        {.mode = PWM_OUTPUT_DISABLED, .callback = nullptr}
+    }, 
+    0, 0, 0 
+};
+
+static PWMConfig pwmcfg_pump = { 
+    1000000, 100, nullptr, 
+    {
+        {.mode = PWM_OUTPUT_ACTIVE_HIGH, .callback = nullptr},
+        {.mode = PWM_OUTPUT_DISABLED, .callback = nullptr},
+        {.mode = PWM_OUTPUT_ACTIVE_HIGH, .callback = nullptr},
+        {.mode = PWM_OUTPUT_ACTIVE_HIGH, .callback = nullptr}
+    }, 
+    0, 0, 0 
+};
 
 // ==========================================
 // THREAD 1 : CONTRÔLE DE LA POMPE (500 Hz)
@@ -197,8 +217,6 @@ static THD_FUNCTION(PumpThread, arg) {
         } else {
             pumpIntegrator = 0.0f;
             
-            // Sécurité : Si la sonde est éteinte ou en défaut, on désactive complètement 
-            // la sortie physique de la pompe pour éviter tout courant résiduel thermique.
             if (!eStopTriggered && TIM3) {
                 TIM3->CCER &= ~TIM_CCER_CC3E; // Désactive TIM3_CH3
             }
@@ -231,7 +249,7 @@ static THD_FUNCTION(WidebandThread, arg) {
     float batteryStableTimerSec = 0.0f; 
 
     while (true) {
-        heaterThreadAliveCounter++; // Signale au Watchdog que le thread est en vie
+        heaterThreadAliveCounter++; 
 
         systime_t now = chVTGetSystemTime();
         float stateElapsedSec = (float)TIME_I2MS(chVTTimeElapsedSinceX(stateStartTime)) / 1000.0f;
@@ -267,7 +285,6 @@ static THD_FUNCTION(WidebandThread, arg) {
         float rpm = rpmOpt.value_or(0.0f);
         float clt = cltOpt.value_or(20.0f); 
         
-        // CORRECTION APPLIQUÉE : Utilisation de l'opérateur booléen direct pour expected<T>
         if ((!vBattOpt || vBatt < 8.5f || rpm < 350.0f) && heaterState != HeaterState::Fault) {
             heaterState = HeaterState::Stopped;
             batteryStableTimerSec = 0.0f; 
@@ -275,7 +292,6 @@ static THD_FUNCTION(WidebandThread, arg) {
 
         float targetHeaterVoltage = 0.0f;
 
-        // --- SÉCURITÉ GLOBALE DU CAPTEUR (Open Load / Court-circuit) ---
         if (sensorEsr >= 4500.0f) {
             if (++openLoadCounter > 50) heaterState = HeaterState::Fault;
         } else if (sensorEsr <= 20.0f) {
@@ -387,7 +403,6 @@ static THD_FUNCTION(WboWatchdogThread, arg) {
     while (true) {
         chThdSleepMilliseconds(500); 
 
-        // Vérification de sécurité du thread de chauffage
         if (heaterThreadAliveCounter == lastCounter) {
             wboHardwareEmergencyStop(); 
             heaterState = HeaterState::Fault;
@@ -408,17 +423,11 @@ void initWidebandDriver(void) {
     pwmStart(&PWMD12, &pwmcfg_heater);
     pwmStart(&PWMD3, &pwmcfg_pump);
     
-    // CORRECTION APPLIQUÉE : Utilisation du masque global STM32_TIM_CR1_CMS
-    PWMD3.tim->CR1 |= STM32_TIM_CR1_CMS;
+    // Utilisation de la macro CMSIS standard pour le mode centré
+    PWMD3.tim->CR1 |= TIM_CR1_CMS;
     
-    // SYNCHRONISATION PARFAITE DE L'ADC (LA CLÉ DE LA MESURE ESR)
-    // CH1 (Index 0) sert uniquement de trigger pour ADC3 (EXTSEL=7U). On déclenche à 80% du cycle.
     pwmEnableChannel(&PWMD3, 0, 80); 
-    
-    // CH4 (Index 3) génère le signal NERNST AC physique sur la sonde à 50% de rapport cyclique.
     pwmEnableChannel(&PWMD3, 3, 50); 
-    
-    // CH3 (Index 2) génère le signal de pompe à 50% (point mort par défaut)
     pwmEnableChannel(&PWMD3, 2, 50); 
 
     adcStartConversion(&ADCD3, &adcgrpcfg, samples, ADC_GRP_BUF_DEPTH);
