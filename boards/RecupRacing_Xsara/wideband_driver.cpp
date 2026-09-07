@@ -75,7 +75,7 @@ extern "C" void wboHardwareEmergencyStop(void) {
     }
 
     if (GPIOE) {
-        *(uint32_t*)&GPIOE->BSRR = (1U << 8); 
+        *(volatile uint32_t*)&GPIOE->BSRR = (1U << 8); 
     }
 }
 
@@ -95,7 +95,7 @@ static float CalculateLambda(float pumpCurrentmA) {
 // ==========================================
 // LECTURE ADC SYNCHRONISÉE
 // ==========================================
-[[maybe_unused]] static void adccallback(ADCDriver *adcp) {
+static void adccallback(ADCDriver *adcp) {
     (void)adcp;
 
     uint32_t sumNernst = 0, sumPump = 0;
@@ -126,7 +126,7 @@ static float CalculateLambda(float pumpCurrentmA) {
     r_3 = r_2; r_2 = r_1;
 }
 
-[[maybe_unused]] static const ADCConversionGroup adcgrpcfg = {
+static const ADCConversionGroup adcgrpcfg = {
     true, (uint16_t)ADC_GRP_NUM_CHANNELS, adccallback, nullptr, 0, 
     ADC_CR2_EXTEN_RISING | (7U << ADC_CR2_EXTSEL_Pos), 0, 
     ADC_SMPR2_SMP_AN2(ADC_SAMPLE_480) | ADC_SMPR2_SMP_AN3(ADC_SAMPLE_480),   
@@ -134,7 +134,7 @@ static float CalculateLambda(float pumpCurrentmA) {
     ADC_SQR3_SQ1_N(ADC_CHANNEL_IN2) | ADC_SQR3_SQ2_N(ADC_CHANNEL_IN3), 0, 0 
 };
 
-[[maybe_unused]] static PWMConfig pwmcfg_heater = { 
+static PWMConfig pwmcfg_heater = { 
     100000, 1000, nullptr, 
     {
         {.mode = PWM_OUTPUT_ACTIVE_HIGH, .callback = nullptr},
@@ -159,8 +159,8 @@ static PWMConfig pwmcfg_pump = {
 // ==========================================
 // THREAD 1 : CONTRÔLE DE LA POMPE (500 Hz)
 // ==========================================
-[[maybe_unused]] static THD_WORKING_AREA(waPumpThread, 1024);
-[[maybe_unused]] static THD_FUNCTION(PumpThread, arg) {
+static THD_WORKING_AREA(waPumpThread, 1024);
+static THD_FUNCTION(PumpThread, arg) {
     (void)arg;
     chRegSetThreadName("WBO Pump");
 
@@ -217,8 +217,8 @@ static PWMConfig pwmcfg_pump = {
 // ==========================================
 // THREAD 2 : CONTRÔLE DU CHAUFFAGE (100 Hz)
 // ==========================================
-[[maybe_unused]] static THD_WORKING_AREA(waWidebandThread, 1024);
-[[maybe_unused]] static THD_FUNCTION(WidebandThread, arg) {
+static THD_WORKING_AREA(waWidebandThread, 1024);
+static THD_FUNCTION(WidebandThread, arg) {
     (void)arg;
     chRegSetThreadName("WBO Heater");
     
@@ -380,8 +380,8 @@ static PWMConfig pwmcfg_pump = {
 // ==========================================
 // THREAD 3 : WATCHDOG LOGICIEL
 // ==========================================
-[[maybe_unused]] static THD_WORKING_AREA(waWboWatchdogThread, 256);
-[[maybe_unused]] static THD_FUNCTION(WboWatchdogThread, arg) {
+static THD_WORKING_AREA(waWboWatchdogThread, 256);
+static THD_FUNCTION(WboWatchdogThread, arg) {
     (void)arg;
     chRegSetThreadName("WBO Watchdog");
     uint32_t lastCounter = 0;
@@ -397,43 +397,29 @@ static PWMConfig pwmcfg_pump = {
     }
 }
 
-// ==========================================
-// THREAD LANCEUR (TEST ISOLATION TIMERS)
-// ==========================================
-static THD_WORKING_AREA(waWboLauncherThread, 512);
-static THD_FUNCTION(WboLauncherThread, arg) {
-    (void)arg;
-    chRegSetThreadName("WBO Launcher");
-
-    // Pause pour laisser l'USB s'énumérer
-    chThdSleepMilliseconds(3000);
-
-    // 1. ON ACTIVE UNIQUEMENT LE TIM3 (Pompe et Nernst)
+void initWidebandDriver(void) {
     palSetPadMode(GPIOC, 9, PAL_MODE_ALTERNATE(2)); // NERNST AC (TIM3_CH4)
     palSetPadMode(GPIOC, 8, PAL_MODE_ALTERNATE(2)); // PUMP PWM (TIM3_CH3)
+    palSetPadMode(GPIOA, 2, PAL_MODE_INPUT_ANALOG);      
+    palSetPadMode(GPIOA, 3, PAL_MODE_INPUT_ANALOG);      
+    palSetPadMode(GPIOB, 14, PAL_MODE_ALTERNATE(9));    
+
+    adcStart(&ADCD3, NULL);
+    
+    pwmStart(&PWMD12, &pwmcfg_heater);
     pwmStart(&PWMD3, &pwmcfg_pump);
+    
     PWMD3.tim->CR1 |= TIM_CR1_CMS;
+    
     pwmEnableChannel(&PWMD3, 0, 80); 
     pwmEnableChannel(&PWMD3, 3, 50); 
     pwmEnableChannel(&PWMD3, 2, 50); 
 
-    // 2. TIM12 EST TOTALEMENT DÉSACTIVÉ POUR CE TEST (Vérification conflit d'horloge)
-    // palSetPadMode(GPIOB, 14, PAL_MODE_ALTERNATE(9));    
-    // pwmStart(&PWMD12, &pwmcfg_heater);
+    adcStartConversion(&ADCD3, &adcgrpcfg, samples, ADC_GRP_BUF_DEPTH);
 
-    // 3. ADC ET THREADS SONT DÉSACTIVÉS POUR ÉVITER UN CRASH CAR LE TIM12 EST COUPÉ
-    // palSetPadMode(GPIOA, 2, PAL_MODE_INPUT_ANALOG);      
-    // palSetPadMode(GPIOA, 3, PAL_MODE_INPUT_ANALOG);      
-    // adcStart(&ADCD3, NULL);
-    // adcStartConversion(&ADCD3, &adcgrpcfg, samples, ADC_GRP_BUF_DEPTH);
-    // chThdCreateStatic(waPumpThread, sizeof(waPumpThread), NORMALPRIO + 4, PumpThread, NULL);
-    // chThdCreateStatic(waWidebandThread, sizeof(waWidebandThread), NORMALPRIO + 3, WidebandThread, NULL);
-    // chThdCreateStatic(waWboWatchdogThread, sizeof(waWboWatchdogThread), NORMALPRIO + 5, WboWatchdogThread, NULL);
-}
-
-void initWidebandDriver(void) {
-    // Lancement du thread asynchrone pour ne pas bloquer le boot de l'USB
-    chThdCreateStatic(waWboLauncherThread, sizeof(waWboLauncherThread), NORMALPRIO, WboLauncherThread, NULL);
+    chThdCreateStatic(waPumpThread, sizeof(waPumpThread), NORMALPRIO + 4, PumpThread, NULL);
+    chThdCreateStatic(waWidebandThread, sizeof(waWidebandThread), NORMALPRIO + 3, WidebandThread, NULL);
+    chThdCreateStatic(waWboWatchdogThread, sizeof(waWboWatchdogThread), NORMALPRIO + 5, WboWatchdogThread, NULL);
 }
 
 #else

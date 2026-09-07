@@ -7,7 +7,7 @@ Gpio getRunningLedPin() { return Gpio::Unassigned; }
 Gpio getWarningLedPin() { return Gpio::Unassigned; }
 
 void setup_custom_board_overrides() {
-    // === SÉCURITÉ MATÉRIELLE CRITIQUE (À FAIRE EN TOUT PREMIER) ===
+    // === SÉCURITÉ MATÉRIELLE CRITIQUE (AVANT LE BOOT OS) ===
     // Force GLOBAL_ENABLE (PE8) à l'état HAUT pour bloquer le buffer U14
     // avant que le reste du système ne s'initialise.
     palSetPadMode(GPIOE, 8, PAL_MODE_OUTPUT_PUSHPULL);
@@ -72,11 +72,15 @@ void setup_custom_board_overrides() {
     // ==========================================
     engineConfiguration->acSwitch = Gpio::A4;
     engineConfiguration->acRelayPin = Gpio::E1;
-    
-    // INITIALISATION MATÉRIELLE SÉCURISÉE DE LA LARGE BANDE
+}
+
+// === HOOK DE DÉMARRAGE TARDIF ===
+// Exécuté APRÈS le démarrage sécurisé de ChibiOS et de l'USB
+void boardInitLate() {
+    // Initialisation matérielle et lancement des Threads de la large bande
     initWidebandDriver();
+    
     // === ACTIVATION FINALE DES BUFFERS MATÉRIELS ===
-    // Une fois le setup terminé, on passe GLOBAL_ENABLE (PE8) à l'état BAS 
-    // pour autoriser le flux des signaux sur U8, U14 et U19 (~OE actif bas).
+    // Une fois le système WBO prêt et sécurisé, on autorise le flux des signaux
     palClearPad(GPIOE, 8);
 }
