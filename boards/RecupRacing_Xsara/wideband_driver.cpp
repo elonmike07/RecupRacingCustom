@@ -31,9 +31,7 @@ static constexpr float VCC_VOLTS = 3.3f;
 static constexpr float ESR_SUPPLY_R = 22000.0f; 
 static constexpr float VM_RESISTOR_VALUE = 10.0f; 
 
-// Masse Virtuelle (Fixe car générée matériellement par le REF3033 de haute précision)
 static constexpr float VIRTUAL_GROUND = 1.65f;
-
 static constexpr float TARGET_ESR = 300.0f;          
 static constexpr float TARGET_TEMP = 780.0f;         
 
@@ -49,8 +47,6 @@ static volatile float pumpCurrentSenseVoltage = 0.0f;
 static volatile float currentSensorTemp = 0.0f; 
 
 static volatile uint32_t heaterThreadAliveCounter = 0;
-
-// Verrou global d'arrêt d'urgence pour bloquer les appels HAL
 static volatile bool eStopTriggered = false;
 
 static float r_1 = 0.0f;
@@ -63,7 +59,7 @@ static volatile HeaterState heaterState = HeaterState::Stopped;
 static inline float f_abs(float x) { return x > 0.0f ? x : -x; }
 
 // ==========================================
-// ARRÊT MATÉRIEL D'URGENCE (SÉCURITÉ PARANO BARE-METAL)
+// ARRÊT MATÉRIEL D'URGENCE
 // ==========================================
 extern "C" void wboHardwareEmergencyStop(void) {
     eStopTriggered = true;
@@ -99,7 +95,7 @@ static float CalculateLambda(float pumpCurrentmA) {
 // ==========================================
 // LECTURE ADC SYNCHRONISÉE
 // ==========================================
-[[maybe_unused]] static void adccallback(ADCDriver *adcp) {
+static void adccallback(ADCDriver *adcp) {
     (void)adcp;
 
     uint32_t sumNernst = 0, sumPump = 0;
@@ -130,7 +126,7 @@ static float CalculateLambda(float pumpCurrentmA) {
     r_3 = r_2; r_2 = r_1;
 }
 
-[[maybe_unused]] static const ADCConversionGroup adcgrpcfg = {
+static const ADCConversionGroup adcgrpcfg = {
     true, (uint16_t)ADC_GRP_NUM_CHANNELS, adccallback, nullptr, 0, 
     ADC_CR2_EXTEN_RISING | (7U << ADC_CR2_EXTSEL_Pos), 0, 
     ADC_SMPR2_SMP_AN2(ADC_SAMPLE_480) | ADC_SMPR2_SMP_AN3(ADC_SAMPLE_480),   
@@ -138,7 +134,7 @@ static float CalculateLambda(float pumpCurrentmA) {
     ADC_SQR3_SQ1_N(ADC_CHANNEL_IN2) | ADC_SQR3_SQ2_N(ADC_CHANNEL_IN3), 0, 0 
 };
 
-[[maybe_unused]] static PWMConfig pwmcfg_heater = { 
+static PWMConfig pwmcfg_heater = { 
     100000, 1000, nullptr, 
     {
         {.mode = PWM_OUTPUT_ACTIVE_HIGH, .callback = nullptr},
@@ -149,7 +145,7 @@ static float CalculateLambda(float pumpCurrentmA) {
     0, 0, 0 
 };
 
-[[maybe_unused]] static PWMConfig pwmcfg_pump = { 
+static PWMConfig pwmcfg_pump = { 
     1000000, 100, nullptr, 
     {
         {.mode = PWM_OUTPUT_ACTIVE_HIGH, .callback = nullptr},
@@ -163,8 +159,8 @@ static float CalculateLambda(float pumpCurrentmA) {
 // ==========================================
 // THREAD 1 : CONTRÔLE DE LA POMPE (500 Hz)
 // ==========================================
-[[maybe_unused]] static THD_WORKING_AREA(waPumpThread, 1024);
-[[maybe_unused]] static THD_FUNCTION(PumpThread, arg) {
+static THD_WORKING_AREA(waPumpThread, 1024);
+static THD_FUNCTION(PumpThread, arg) {
     (void)arg;
     chRegSetThreadName("WBO Pump");
 
@@ -221,8 +217,8 @@ static float CalculateLambda(float pumpCurrentmA) {
 // ==========================================
 // THREAD 2 : CONTRÔLE DU CHAUFFAGE (100 Hz)
 // ==========================================
-[[maybe_unused]] static THD_WORKING_AREA(waWidebandThread, 1024);
-[[maybe_unused]] static THD_FUNCTION(WidebandThread, arg) {
+static THD_WORKING_AREA(waWidebandThread, 1024);
+static THD_FUNCTION(WidebandThread, arg) {
     (void)arg;
     chRegSetThreadName("WBO Heater");
     
@@ -384,8 +380,8 @@ static float CalculateLambda(float pumpCurrentmA) {
 // ==========================================
 // THREAD 3 : WATCHDOG LOGICIEL
 // ==========================================
-[[maybe_unused]] static THD_WORKING_AREA(waWboWatchdogThread, 256);
-[[maybe_unused]] static THD_FUNCTION(WboWatchdogThread, arg) {
+static THD_WORKING_AREA(waWboWatchdogThread, 256);
+static THD_FUNCTION(WboWatchdogThread, arg) {
     (void)arg;
     chRegSetThreadName("WBO Watchdog");
     uint32_t lastCounter = 0;
@@ -401,33 +397,46 @@ static float CalculateLambda(float pumpCurrentmA) {
     }
 }
 
+// ==========================================
+// THREAD LANCEUR (DÉLAI DE DÉMARRAGE)
+// ==========================================
+static THD_WORKING_AREA(waWboLauncherThread, 512);
+static THD_FUNCTION(WboLauncherThread, arg) {
+    (void)arg;
+    chRegSetThreadName("WBO Launcher");
+
+    // Pause de 3 secondes pour laisser le contrôleur USB de rusEFI s'énumérer sur le PC
+    chThdSleepMilliseconds(3000);
+
+    // Initialisation matérielle retardée
+    palSetPadMode(GPIOC, 9, PAL_MODE_ALTERNATE(2)); 
+    palSetPadMode(GPIOC, 8, PAL_MODE_ALTERNATE(2)); 
+    palSetPadMode(GPIOA, 2, PAL_MODE_INPUT_ANALOG);      
+    palSetPadMode(GPIOA, 3, PAL_MODE_INPUT_ANALOG);      
+    palSetPadMode(GPIOB, 14, PAL_MODE_ALTERNATE(9));    
+
+    adcStart(&ADCD3, NULL);
+    
+    pwmStart(&PWMD12, &pwmcfg_heater);
+    pwmStart(&PWMD3, &pwmcfg_pump);
+    
+    PWMD3.tim->CR1 |= TIM_CR1_CMS;
+    
+    pwmEnableChannel(&PWMD3, 0, 80); 
+    pwmEnableChannel(&PWMD3, 3, 50); 
+    pwmEnableChannel(&PWMD3, 2, 50); 
+
+    adcStartConversion(&ADCD3, &adcgrpcfg, samples, ADC_GRP_BUF_DEPTH);
+
+    // Démarrage des threads de la logique métier
+    chThdCreateStatic(waPumpThread, sizeof(waPumpThread), NORMALPRIO + 4, PumpThread, NULL);
+    chThdCreateStatic(waWidebandThread, sizeof(waWidebandThread), NORMALPRIO + 3, WidebandThread, NULL);
+    chThdCreateStatic(waWboWatchdogThread, sizeof(waWboWatchdogThread), NORMALPRIO + 5, WboWatchdogThread, NULL);
+}
+
 void initWidebandDriver(void) {
-    // --- KILL SWITCH ACTIF ---
-    // Toute l'initialisation matérielle (ADC, PWM, Threads) est neutralisée
-    // afin de vérifier si l'USB parvient à s'énumérer correctement.
-    
-    // palSetPadMode(GPIOC, 9, PAL_MODE_ALTERNATE(2)); 
-    // palSetPadMode(GPIOC, 8, PAL_MODE_ALTERNATE(2)); 
-    // palSetPadMode(GPIOA, 2, PAL_MODE_INPUT_ANALOG);      
-    // palSetPadMode(GPIOA, 3, PAL_MODE_INPUT_ANALOG);      
-    // palSetPadMode(GPIOB, 14, PAL_MODE_ALTERNATE(9));    
-
-    // adcStart(&ADCD3, NULL);
-    
-    // pwmStart(&PWMD12, &pwmcfg_heater);
-    // pwmStart(&PWMD3, &pwmcfg_pump);
-    
-    // PWMD3.tim->CR1 |= TIM_CR1_CMS;
-    
-    // pwmEnableChannel(&PWMD3, 0, 80); 
-    // pwmEnableChannel(&PWMD3, 3, 50); 
-    // pwmEnableChannel(&PWMD3, 2, 50); 
-
-    // adcStartConversion(&ADCD3, &adcgrpcfg, samples, ADC_GRP_BUF_DEPTH);
-
-    // chThdCreateStatic(waPumpThread, sizeof(waPumpThread), NORMALPRIO + 4, PumpThread, NULL);
-    // chThdCreateStatic(waWidebandThread, sizeof(waWidebandThread), NORMALPRIO + 3, WidebandThread, NULL);
-    // chThdCreateStatic(waWboWatchdogThread, sizeof(waWboWatchdogThread), NORMALPRIO + 5, WboWatchdogThread, NULL);
+    // Création du thread lanceur avec priorité normale. Il s'exécutera en asynchrone.
+    chThdCreateStatic(waWboLauncherThread, sizeof(waWboLauncherThread), NORMALPRIO, WboLauncherThread, NULL);
 }
 
 #else
