@@ -83,7 +83,6 @@ extern "C" void wboHardwareEmergencyStop(void) {
     }
 
     // 2. Verrouillage matériel des buffers via GLOBAL_ENABLE (PE8)
-    // Utilisation d'un cast direct 32 bits pour contourner l'encapsulation de l'union ChibiOS
     if (GPIOE) {
         *(uint32_t*)&GPIOE->BSRR = (1U << 8); 
     }
@@ -430,7 +429,8 @@ void initWidebandDriver(void) {
     pwmEnableChannel(&PWMD3, 3, 50); 
     pwmEnableChannel(&PWMD3, 2, 50); 
 
-    adcStartConversion(&ADCD3, &adcgrpcfg, samples, ADC_GRP_BUF_DEPTH);
+    // --- ISOLATION DE L'ADC : Conversion désactivée pour test USB ---
+    // adcStartConversion(&ADCD3, &adcgrpcfg, samples, ADC_GRP_BUF_DEPTH);
 
     chThdCreateStatic(waPumpThread, sizeof(waPumpThread), NORMALPRIO + 4, PumpThread, NULL);
     chThdCreateStatic(waWidebandThread, sizeof(waWidebandThread), NORMALPRIO + 3, WidebandThread, NULL);
