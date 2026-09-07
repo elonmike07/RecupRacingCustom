@@ -31,7 +31,9 @@ static constexpr float VCC_VOLTS = 3.3f;
 static constexpr float ESR_SUPPLY_R = 22000.0f; 
 static constexpr float VM_RESISTOR_VALUE = 10.0f; 
 
+// Masse Virtuelle (Fixe car générée matériellement par le REF3033 de haute précision)
 static constexpr float VIRTUAL_GROUND = 1.65f;
+
 static constexpr float TARGET_ESR = 300.0f;          
 static constexpr float TARGET_TEMP = 780.0f;         
 
@@ -47,6 +49,8 @@ static volatile float pumpCurrentSenseVoltage = 0.0f;
 static volatile float currentSensorTemp = 0.0f; 
 
 static volatile uint32_t heaterThreadAliveCounter = 0;
+
+// Verrou global d'arrêt d'urgence pour bloquer les appels HAL
 static volatile bool eStopTriggered = false;
 
 static float r_1 = 0.0f;
@@ -59,7 +63,7 @@ static volatile HeaterState heaterState = HeaterState::Stopped;
 static inline float f_abs(float x) { return x > 0.0f ? x : -x; }
 
 // ==========================================
-// ARRÊT MATÉRIEL D'URGENCE
+// ARRÊT MATÉRIEL D'URGENCE (SÉCURITÉ PARANO BARE-METAL)
 // ==========================================
 extern "C" void wboHardwareEmergencyStop(void) {
     eStopTriggered = true;
@@ -95,7 +99,7 @@ static float CalculateLambda(float pumpCurrentmA) {
 // ==========================================
 // LECTURE ADC SYNCHRONISÉE
 // ==========================================
-static void adccallback(ADCDriver *adcp) {
+[[maybe_unused]] static void adccallback(ADCDriver *adcp) {
     (void)adcp;
 
     uint32_t sumNernst = 0, sumPump = 0;
@@ -126,7 +130,7 @@ static void adccallback(ADCDriver *adcp) {
     r_3 = r_2; r_2 = r_1;
 }
 
-static const ADCConversionGroup adcgrpcfg = {
+[[maybe_unused]] static const ADCConversionGroup adcgrpcfg = {
     true, (uint16_t)ADC_GRP_NUM_CHANNELS, adccallback, nullptr, 0, 
     ADC_CR2_EXTEN_RISING | (7U << ADC_CR2_EXTSEL_Pos), 0, 
     ADC_SMPR2_SMP_AN2(ADC_SAMPLE_480) | ADC_SMPR2_SMP_AN3(ADC_SAMPLE_480),   
@@ -134,7 +138,7 @@ static const ADCConversionGroup adcgrpcfg = {
     ADC_SQR3_SQ1_N(ADC_CHANNEL_IN2) | ADC_SQR3_SQ2_N(ADC_CHANNEL_IN3), 0, 0 
 };
 
-static PWMConfig pwmcfg_heater = { 
+[[maybe_unused]] static PWMConfig pwmcfg_heater = { 
     100000, 1000, nullptr, 
     {
         {.mode = PWM_OUTPUT_ACTIVE_HIGH, .callback = nullptr},
@@ -145,7 +149,7 @@ static PWMConfig pwmcfg_heater = {
     0, 0, 0 
 };
 
-static PWMConfig pwmcfg_pump = { 
+[[maybe_unused]] static PWMConfig pwmcfg_pump = { 
     1000000, 100, nullptr, 
     {
         {.mode = PWM_OUTPUT_ACTIVE_HIGH, .callback = nullptr},
@@ -398,26 +402,29 @@ static PWMConfig pwmcfg_pump = {
 }
 
 void initWidebandDriver(void) {
-    palSetPadMode(GPIOC, 9, PAL_MODE_ALTERNATE(2)); 
-    palSetPadMode(GPIOC, 8, PAL_MODE_ALTERNATE(2)); 
-    palSetPadMode(GPIOA, 2, PAL_MODE_INPUT_ANALOG);      
-    palSetPadMode(GPIOA, 3, PAL_MODE_INPUT_ANALOG);      
-    palSetPadMode(GPIOB, 14, PAL_MODE_ALTERNATE(9));    
-
-    adcStart(&ADCD3, NULL);
+    // --- KILL SWITCH ACTIF ---
+    // Toute l'initialisation matérielle (ADC, PWM, Threads) est neutralisée
+    // afin de vérifier si l'USB parvient à s'énumérer correctement.
     
-    pwmStart(&PWMD12, &pwmcfg_heater);
-    pwmStart(&PWMD3, &pwmcfg_pump);
-    
-    PWMD3.tim->CR1 |= TIM_CR1_CMS;
-    
-    pwmEnableChannel(&PWMD3, 0, 80); 
-    pwmEnableChannel(&PWMD3, 3, 50); 
-    pwmEnableChannel(&PWMD3, 2, 50); 
+    // palSetPadMode(GPIOC, 9, PAL_MODE_ALTERNATE(2)); 
+    // palSetPadMode(GPIOC, 8, PAL_MODE_ALTERNATE(2)); 
+    // palSetPadMode(GPIOA, 2, PAL_MODE_INPUT_ANALOG);      
+    // palSetPadMode(GPIOA, 3, PAL_MODE_INPUT_ANALOG);      
+    // palSetPadMode(GPIOB, 14, PAL_MODE_ALTERNATE(9));    
 
-    adcStartConversion(&ADCD3, &adcgrpcfg, samples, ADC_GRP_BUF_DEPTH);
+    // adcStart(&ADCD3, NULL);
+    
+    // pwmStart(&PWMD12, &pwmcfg_heater);
+    // pwmStart(&PWMD3, &pwmcfg_pump);
+    
+    // PWMD3.tim->CR1 |= TIM_CR1_CMS;
+    
+    // pwmEnableChannel(&PWMD3, 0, 80); 
+    // pwmEnableChannel(&PWMD3, 3, 50); 
+    // pwmEnableChannel(&PWMD3, 2, 50); 
 
-    // DÉSACTIVÉ : On isole les threads pour vérifier si l'USB refonctionne
+    // adcStartConversion(&ADCD3, &adcgrpcfg, samples, ADC_GRP_BUF_DEPTH);
+
     // chThdCreateStatic(waPumpThread, sizeof(waPumpThread), NORMALPRIO + 4, PumpThread, NULL);
     // chThdCreateStatic(waWidebandThread, sizeof(waWidebandThread), NORMALPRIO + 3, WidebandThread, NULL);
     // chThdCreateStatic(waWboWatchdogThread, sizeof(waWboWatchdogThread), NORMALPRIO + 5, WboWatchdogThread, NULL);
