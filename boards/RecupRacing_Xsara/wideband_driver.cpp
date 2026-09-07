@@ -31,9 +31,7 @@ static constexpr float VCC_VOLTS = 3.3f;
 static constexpr float ESR_SUPPLY_R = 22000.0f; 
 static constexpr float VM_RESISTOR_VALUE = 10.0f; 
 
-// Masse Virtuelle (Fixe car générée matériellement par le REF3033 de haute précision)
 static constexpr float VIRTUAL_GROUND = 1.65f;
-
 static constexpr float TARGET_ESR = 300.0f;          
 static constexpr float TARGET_TEMP = 780.0f;         
 
@@ -49,8 +47,6 @@ static volatile float pumpCurrentSenseVoltage = 0.0f;
 static volatile float currentSensorTemp = 0.0f; 
 
 static volatile uint32_t heaterThreadAliveCounter = 0;
-
-// Verrou global d'arrêt d'urgence pour bloquer les appels HAL
 static volatile bool eStopTriggered = false;
 
 static float r_1 = 0.0f;
@@ -63,7 +59,7 @@ static volatile HeaterState heaterState = HeaterState::Stopped;
 static inline float f_abs(float x) { return x > 0.0f ? x : -x; }
 
 // ==========================================
-// ARRÊT MATÉRIEL D'URGENCE (SÉCURITÉ PARANO BARE-METAL)
+// ARRÊT MATÉRIEL D'URGENCE
 // ==========================================
 extern "C" void wboHardwareEmergencyStop(void) {
     eStopTriggered = true;
@@ -130,7 +126,6 @@ static void adccallback(ADCDriver *adcp) {
     r_3 = r_2; r_2 = r_1;
 }
 
-// Configuration ADC3
 static const ADCConversionGroup adcgrpcfg = {
     true, (uint16_t)ADC_GRP_NUM_CHANNELS, adccallback, nullptr, 0, 
     ADC_CR2_EXTEN_RISING | (7U << ADC_CR2_EXTSEL_Pos), 0, 
@@ -164,8 +159,8 @@ static PWMConfig pwmcfg_pump = {
 // ==========================================
 // THREAD 1 : CONTRÔLE DE LA POMPE (500 Hz)
 // ==========================================
-static THD_WORKING_AREA(waPumpThread, 1024);
-static THD_FUNCTION(PumpThread, arg) {
+[[maybe_unused]] static THD_WORKING_AREA(waPumpThread, 1024);
+[[maybe_unused]] static THD_FUNCTION(PumpThread, arg) {
     (void)arg;
     chRegSetThreadName("WBO Pump");
 
@@ -222,8 +217,8 @@ static THD_FUNCTION(PumpThread, arg) {
 // ==========================================
 // THREAD 2 : CONTRÔLE DU CHAUFFAGE (100 Hz)
 // ==========================================
-static THD_WORKING_AREA(waWidebandThread, 1024);
-static THD_FUNCTION(WidebandThread, arg) {
+[[maybe_unused]] static THD_WORKING_AREA(waWidebandThread, 1024);
+[[maybe_unused]] static THD_FUNCTION(WidebandThread, arg) {
     (void)arg;
     chRegSetThreadName("WBO Heater");
     
@@ -385,8 +380,8 @@ static THD_FUNCTION(WidebandThread, arg) {
 // ==========================================
 // THREAD 3 : WATCHDOG LOGICIEL
 // ==========================================
-static THD_WORKING_AREA(waWboWatchdogThread, 256);
-static THD_FUNCTION(WboWatchdogThread, arg) {
+[[maybe_unused]] static THD_WORKING_AREA(waWboWatchdogThread, 256);
+[[maybe_unused]] static THD_FUNCTION(WboWatchdogThread, arg) {
     (void)arg;
     chRegSetThreadName("WBO Watchdog");
     uint32_t lastCounter = 0;
@@ -403,8 +398,8 @@ static THD_FUNCTION(WboWatchdogThread, arg) {
 }
 
 void initWidebandDriver(void) {
-    palSetPadMode(GPIOC, 9, PAL_MODE_ALTERNATE(2)); // NERNST AC (TIM3_CH4)
-    palSetPadMode(GPIOC, 8, PAL_MODE_ALTERNATE(2)); // PUMP PWM (TIM3_CH3)
+    palSetPadMode(GPIOC, 9, PAL_MODE_ALTERNATE(2)); 
+    palSetPadMode(GPIOC, 8, PAL_MODE_ALTERNATE(2)); 
     palSetPadMode(GPIOA, 2, PAL_MODE_INPUT_ANALOG);      
     palSetPadMode(GPIOA, 3, PAL_MODE_INPUT_ANALOG);      
     palSetPadMode(GPIOB, 14, PAL_MODE_ALTERNATE(9));    
@@ -420,7 +415,6 @@ void initWidebandDriver(void) {
     pwmEnableChannel(&PWMD3, 3, 50); 
     pwmEnableChannel(&PWMD3, 2, 50); 
 
-    // RÉACTIVÉ : L'ADC tourne normalement
     adcStartConversion(&ADCD3, &adcgrpcfg, samples, ADC_GRP_BUF_DEPTH);
 
     // DÉSACTIVÉ : On isole les threads pour vérifier si l'USB refonctionne
