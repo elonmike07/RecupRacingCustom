@@ -1,18 +1,15 @@
 #include "pch.h"
 #include "board_overrides.h"
-#include "wideband_driver.h" 
+// #include "wideband_driver.h" // Désactivé
 
 Gpio getCommsLedPin() { return Gpio::Unassigned; }
 Gpio getRunningLedPin() { return Gpio::Unassigned; }
 Gpio getWarningLedPin() { return Gpio::Unassigned; }
 
 void setup_custom_board_overrides() {
-    // === SÉCURITÉ MATÉRIELLE CRITIQUE (AVANT LE BOOT OS) ===
-    // Force GLOBAL_ENABLE (PE8) à l'état HAUT pour bloquer le buffer U14
-    // avant que le reste du système ne s'initialise.
+    // Initialisation du GPIO PE8 pour le contrôle global (laissé en place pour la structure)
     palSetPadMode(GPIOE, 8, PAL_MODE_OUTPUT_PUSHPULL);
     palSetPad(GPIOE, 8);
-    // ==============================================================
 
     // ==========================================
     // CAPTEURS ANALOGIQUES (CORRIGÉS POUR STM32F4)
@@ -68,32 +65,23 @@ void setup_custom_board_overrides() {
     engineConfiguration->idle.stepperStepPin = Gpio::D12;
 
     // ==========================================
-    // CLIMATISATION & WIDEBAND
+    // CLIMATISATION
     // ==========================================
     engineConfiguration->acSwitch = Gpio::A4;
     engineConfiguration->acRelayPin = Gpio::E1;
 }
 
 // === HOOK DE DÉMARRAGE TARDIF ===
-// Exécuté APRÈS le démarrage sécurisé de ChibiOS et de l'USB
 void boardInitLate() {
-    // Initialisation matérielle et lancement des Threads de la large bande
-    initWidebandDriver();
+    // Wideband désactivé : on commente le driver et l'attente
+    // initWidebandDriver();
     
-    // === MÉCANISME DE SOFT-START (ATTENTE ACTIVE) ===
-    // On attend que le thread de chauffage ait explicitement mis le PWM à 0
-    int timeoutMs = 500;
-    while (!wboPwmInitialized && timeoutMs > 0) {
-        chThdSleepMilliseconds(10);
-        timeoutMs -= 10;
-    }
+    // int timeoutMs = 500;
+    // while (!wboPwmInitialized && timeoutMs > 0) {
+    //     chThdSleepMilliseconds(10);
+    //     timeoutMs -= 10;
+    // }
     
-    // === ACTIVATION FINALE DES BUFFERS MATÉRIELS ===
-    if (wboPwmInitialized) {
-        // Le système WBO est prêt et sécurisé, on autorise le flux
-        palClearPad(GPIOE, 8);
-    } else {
-        // FAILSAFE : Si le timeout est atteint (plantage du thread WBO au boot),
-        // PE8 reste à l'état HAUT et le buffer matériel reste verrouillé.
-    }
+    // On déverrouille directement les buffers matériels (PE8 à l'état bas)
+    palClearPad(GPIOE, 8);
 }
