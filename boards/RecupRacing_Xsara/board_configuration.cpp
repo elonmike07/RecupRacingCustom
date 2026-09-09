@@ -1,18 +1,19 @@
 #include "pch.h"
 #include "board_overrides.h"
-// #include "wideband_driver.h" // Désactivé
 
 Gpio getCommsLedPin() { return Gpio::Unassigned; }
 Gpio getRunningLedPin() { return Gpio::Unassigned; }
 Gpio getWarningLedPin() { return Gpio::Unassigned; }
 
 void setup_custom_board_overrides() {
-    // Initialisation du GPIO PE8 pour le contrôle global (laissé en place pour la structure)
+    // === DÉVERROUILLAGE MATÉRIEL IMMÉDIAT (PE8 / U14) ===
+    // On configure PE8 en sortie et on le met à l'état BAS (0V) 
+    // pour autoriser immédiatement les signaux à traverser les buffers.
     palSetPadMode(GPIOE, 8, PAL_MODE_OUTPUT_PUSHPULL);
-    palSetPad(GPIOE, 8);
+    palClearPad(GPIOE, 8);
 
     // ==========================================
-    // CAPTEURS ANALOGIQUES (CORRIGÉS POUR STM32F4)
+    // CAPTEURS ANALOGIQUES (STM32F4)
     // ==========================================
     engineConfiguration->map.sensor.hwChannel = EFI_ADC_10; // PC0 = ADC10
     engineConfiguration->tps1_1AdcChannel = EFI_ADC_12;     // PC2 = ADC12
@@ -69,19 +70,4 @@ void setup_custom_board_overrides() {
     // ==========================================
     engineConfiguration->acSwitch = Gpio::A4;
     engineConfiguration->acRelayPin = Gpio::E1;
-}
-
-// === HOOK DE DÉMARRAGE TARDIF ===
-void boardInitLate() {
-    // Wideband désactivé : on commente le driver et l'attente
-    // initWidebandDriver();
-    
-    // int timeoutMs = 500;
-    // while (!wboPwmInitialized && timeoutMs > 0) {
-    //     chThdSleepMilliseconds(10);
-    //     timeoutMs -= 10;
-    // }
-    
-    // On déverrouille directement les buffers matériels (PE8 à l'état bas)
-    palClearPad(GPIOE, 8);
 }

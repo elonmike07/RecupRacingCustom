@@ -14,6 +14,5 @@ DDEFS += -DSTM32_PWM_USE_TIM3=TRUE
 ifneq ($(PROJECT_CPU),simulator)
 BOARDCPPSRC += \
     $(BOARD_DIR)/board_configuration.cpp \
-    $(BOARD_DIR)/wideband_driver.cpp \
 
 endif
